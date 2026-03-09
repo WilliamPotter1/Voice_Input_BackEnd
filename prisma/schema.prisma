@@ -1,0 +1,44 @@
+// Voice-Based Quote Generator - Prisma Schema (MongoDB)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+
+  quotes Quote[]
+}
+
+model Quote {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @map("user_id") @db.ObjectId
+  clientName String?
+  vatRate    Float    @default(0.19)
+  subtotal   Float    @default(0)
+  vat        Float    @default(0)
+  total      Float    @default(0)
+  createdAt  DateTime @default(now())
+
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items QuoteItem[]
+}
+
+model QuoteItem {
+  id       String @id @default(auto()) @map("_id") @db.ObjectId
+  quoteId  String @map("quote_id") @db.ObjectId
+  itemName String
+  quantity Int    @default(1)
+  price    Float
+  total    Float
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+}
