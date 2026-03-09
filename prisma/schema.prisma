@@ -1,44 +1,50 @@
-// Voice-Based Quote Generator - Prisma Schema (MongoDB)
+// Voice-Based Quote Generator - Prisma Schema (PostgreSQL)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "mongodb"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  id        String   @id @default(uuid())
   email     String   @unique
   password  String
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at")
 
   quotes Quote[]
+
+  @@map("users")
 }
 
 model Quote {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId     String   @map("user_id") @db.ObjectId
-  clientName String?
-  vatRate    Float    @default(0.19)
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  clientName String?  @map("client_name")
+  vatRate    Float    @default(0.19) @map("vat_rate")
   subtotal   Float    @default(0)
   vat        Float    @default(0)
   total      Float    @default(0)
-  createdAt  DateTime @default(now())
+  createdAt  DateTime @default(now()) @map("created_at")
 
   user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   items QuoteItem[]
+
+  @@map("quotes")
 }
 
 model QuoteItem {
-  id       String @id @default(auto()) @map("_id") @db.ObjectId
-  quoteId  String @map("quote_id") @db.ObjectId
-  itemName String
+  id       String @id @default(uuid())
+  quoteId  String @map("quote_id")
+  itemName String @map("item_name")
   quantity Int    @default(1)
   price    Float
   total    Float
 
   quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@map("quote_items")
 }
