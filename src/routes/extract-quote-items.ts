@@ -6,6 +6,8 @@ export async function extractQuoteItemsRoutes(
   app: FastifyInstance,
   _opts: FastifyPluginOptions
 ) {
+  app.addHook('preHandler', app.authenticate);
+
   app.post(
     '/extract-quote-items',
     {

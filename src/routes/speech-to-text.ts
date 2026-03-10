@@ -17,6 +17,8 @@ export async function speechToTextRoutes(
   app: FastifyInstance,
   _opts: FastifyPluginOptions
 ) {
+  app.addHook('preHandler', app.authenticate);
+
   app.post('/transcribe', {
     schema: {
       description: 'Transcribe audio file to text using OpenAI Whisper. Send multipart form: file (audio), optional language (de, en, it, fr, es).',
