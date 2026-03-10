@@ -1,12 +1,23 @@
-import type { FastifyInstance, FastifyPluginOptions } from 'fastify';
+import type { FastifyInstance, FastifyPluginOptions, FastifyRequest, FastifyReply } from 'fastify';
 import { extractQuoteItems } from '../services/extract-quote-items.js';
 import { extractQuoteItemsBodySchema } from '../schemas/quotes.js';
+
+async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
+  try {
+    await request.jwtVerify();
+    const payload = request.user as { sub?: string };
+    if (!payload?.sub) return reply.status(401).send({ error: 'Unauthorized' });
+    request.userId = payload.sub;
+  } catch {
+    return reply.status(401).send({ error: 'Unauthorized' });
+  }
+}
 
 export async function extractQuoteItemsRoutes(
   app: FastifyInstance,
   _opts: FastifyPluginOptions
 ) {
-  app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', requireAuth);
 
   app.post(
     '/extract-quote-items',

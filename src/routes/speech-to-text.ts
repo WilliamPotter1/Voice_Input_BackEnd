@@ -1,8 +1,19 @@
-import type { FastifyInstance, FastifyPluginOptions } from 'fastify';
+import type { FastifyInstance, FastifyPluginOptions, FastifyRequest, FastifyReply } from 'fastify';
 import { speechToTextService } from '../services/speech-to-text.js';
 
 const ALLOWED_MIMES = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/webm'];
 const ALLOWED_EXT = ['.mp3', '.wav', '.m4a', '.webm'];
+
+async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
+  try {
+    await request.jwtVerify();
+    const payload = request.user as { sub?: string };
+    if (!payload?.sub) return reply.status(401).send({ error: 'Unauthorized' });
+    request.userId = payload.sub;
+  } catch {
+    return reply.status(401).send({ error: 'Unauthorized' });
+  }
+}
 
 function isAllowedMime(mime: string): boolean {
   return ALLOWED_MIMES.some((m) => mime?.toLowerCase().includes(m.replace('audio/', '')));
@@ -17,7 +28,7 @@ export async function speechToTextRoutes(
   app: FastifyInstance,
   _opts: FastifyPluginOptions
 ) {
-  app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', requireAuth);
 
   app.post('/transcribe', {
     schema: {
