@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const quoteItemSchema = z.object({
   itemName: z.string().min(1),
-  quantity: z.number().int().positive(),
+  quantity: z.number().positive(),
   unitPrice: z.number().nonnegative(),
 });
 

@@ -34,7 +34,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
                 type: 'object',
                 properties: {
                   itemName: { type: 'string' },
-                  quantity: { type: 'integer' },
+                  quantity: { type: 'number' },
                   unitPrice: { type: 'number' },
                 },
               },
@@ -187,7 +187,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
                   properties: {
                     id: { type: 'string' },
                     itemName: { type: 'string' },
-                    quantity: { type: 'integer' },
+                    quantity: { type: 'number' },
                     unitPrice: { type: 'number' },
                     total: { type: 'number' },
                   },
@@ -246,7 +246,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
                 type: 'object',
                 properties: {
                   itemName: { type: 'string' },
-                  quantity: { type: 'integer' },
+                  quantity: { type: 'number' },
                   unitPrice: { type: 'number' },
                 },
               },

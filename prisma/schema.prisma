@@ -42,7 +42,7 @@ model QuoteItem {
   id       String @id @default(uuid())
   quoteId  String @map("quote_id")
   itemName String @map("item_name")
-  quantity Int    @default(1)
+  quantity Float  @default(1)
   price    Float
   total    Float
 
