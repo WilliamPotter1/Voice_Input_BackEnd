@@ -39,6 +39,7 @@ export async function extractQuoteItemsRoutes(
               customerName: { type: 'string', nullable: true },
               customerAddress: { type: 'string', nullable: true },
               vatRate: { type: 'number', nullable: true },
+              currency: { type: 'string', nullable: true },
               items: {
                 type: 'array',
                 items: {
@@ -69,6 +70,7 @@ export async function extractQuoteItemsRoutes(
         customerName: result.customerName,
         customerAddress: result.customerAddress,
         vatRate: result.vatRate,
+        currency: result.currency,
         items: result.items,
       });
     }

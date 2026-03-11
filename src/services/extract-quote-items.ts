@@ -9,7 +9,7 @@ function getOpenAI() {
   return _openai;
 }
 
-const SYSTEM_PROMPT = `You are a quote extraction assistant. Given a transcription of someone describing products or services, their quantities, prices and tax/VAT, extract a structured list of line items and, if possible, the customer's name and tax rate.
+const SYSTEM_PROMPT = `You are a quote extraction assistant. Given a transcription of someone describing products or services, their quantities, prices and tax/VAT, extract a structured list of line items and, if possible, the customer's name, address, tax rate, and main currency.
 
 Rules:
 - Output ONLY a valid JSON object with this exact shape (no markdown, no explanation):
@@ -17,6 +17,7 @@ Rules:
     "customerName": "string or null",
     "customerAddress": "string or null",
     "vatRate": 0.19,
+    "currency": "EUR",
     "items": [
       {
         "itemName": "string",
@@ -28,8 +29,16 @@ Rules:
   }
 - "items" must always be an array (possibly empty).
 - "customerName" must be a string with the customer or company name if you can clearly identify it (e.g. "Müller GmbH", "Mr. Smith", "Acme Corp"); otherwise use null.
-- "customerAddress" must be a single string with the customer's address if you can clearly identify it (street, house number, postal code, city, country as far as known from the text); otherwise use null.
+- "customerAddress" must be a single string with the customer's address if you can clearly identify it; otherwise use null.
+- When you know the full German-style address, format "customerAddress" in this exact field order:
+  1) ZIP/postal code
+  2) City name
+  3) Street name
+  4) Street/house number
+  For example: "10115 Berlin, Invalidenstraße 116".
+- If you only know some parts, still keep the same order and omit the missing pieces, e.g. "10115 Berlin" or "10115 Berlin, Invalidenstraße".
 - "vatRate" must be a number between 0 and 1 representing the tax/VAT fraction (e.g. 0.19 for 19%, 0.07 for 7%). If no tax/VAT is clearly specified, use null.
+- "currency" must be a 3-letter ISO 4217 currency code (e.g. "EUR", "CHF", "USD") that matches the main currency implied in the text. If you cannot confidently determine the currency, use "EUR" by default.
 - Each element must have: "itemName" (string), "quantity" (integer), "unitPrice" (number, in the main currency unit, e.g. euros), and "unit" (string).
 - Infer product/service name from the text. Use clear, professional labels (e.g. "Window installation", "Door installation").
 - If the text mentions "3 windows for 250 euros each", output itemName like "Window installation" or "Windows", quantity 3, unitPrice 250.
@@ -45,7 +54,7 @@ Rules:
 export async function extractQuoteItems(
   text: string,
   options?: { language?: string }
-): Promise<{ items: QuoteItemInput[]; customerName: string | null; customerAddress: string | null; vatRate: number | null }> {
+): Promise<{ items: QuoteItemInput[]; customerName: string | null; customerAddress: string | null; vatRate: number | null; currency: string | null }> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not set');
   }
@@ -70,11 +79,11 @@ export async function extractQuoteItems(
   });
 
   const raw = completion.choices[0]?.message?.content?.trim();
-  if (!raw) return { items: [], customerName: null, customerAddress: null, vatRate: null };
+  if (!raw) return { items: [], customerName: null, customerAddress: null, vatRate: null, currency: null };
 
   try {
     const parsed = JSON.parse(raw) as unknown;
-    const root = parsed as { items?: unknown[]; customerName?: unknown; customerAddress?: unknown; vatRate?: unknown } | unknown[];
+    const root = parsed as { items?: unknown[]; customerName?: unknown; customerAddress?: unknown; vatRate?: unknown; currency?: unknown } | unknown[];
     const arr = Array.isArray(root) ? root : root.items ?? [];
     const customerNameRaw = Array.isArray(root) ? undefined : root.customerName;
     const customerName =
@@ -95,6 +104,12 @@ export async function extractQuoteItems(
         ? vatRateNum
         : null;
 
+    const currencyRaw = Array.isArray(root) ? undefined : root.currency;
+    const currency =
+      typeof currencyRaw === 'string' && currencyRaw.trim().length === 3
+        ? currencyRaw.trim().toUpperCase()
+        : null;
+
     const items = arr.map((x: unknown) => {
       const o = x as Record<string, unknown>;
       const baseName = String(o.itemName ?? o.name ?? 'Item').trim() || 'Item';
@@ -107,8 +122,8 @@ export async function extractQuoteItems(
       };
     });
 
-    return { items, customerName, customerAddress, vatRate };
+    return { items, customerName, customerAddress, vatRate, currency };
   } catch {
-    return { items: [], customerName: null, customerAddress: null, vatRate: null };
+    return { items: [], customerName: null, customerAddress: null, vatRate: null, currency: null };
   }
 }

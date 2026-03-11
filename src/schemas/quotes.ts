@@ -14,6 +14,7 @@ export const extractQuoteItemsBodySchema = z.object({
 export const createQuoteBodySchema = z.object({
   clientName: z.string().optional(),
   customerAddress: z.string().optional(),
+  currency: z.string().length(3).optional(),
   vatRate: z.number().min(0).max(1).optional(), // e.g. 0.19
   items: z.array(quoteItemSchema).min(1),
 });
@@ -21,6 +22,7 @@ export const createQuoteBodySchema = z.object({
 export const updateQuoteBodySchema = z.object({
   clientName: z.string().optional().nullable(),
   customerAddress: z.string().optional().nullable(),
+  currency: z.string().length(3).optional().nullable(),
   vatRate: z.number().min(0).max(1).optional(),
   items: z.array(quoteItemSchema).optional(),
 });
