@@ -37,6 +37,7 @@ export async function extractQuoteItemsRoutes(
             type: 'object',
             properties: {
               customerName: { type: 'string', nullable: true },
+              customerAddress: { type: 'string', nullable: true },
               vatRate: { type: 'number', nullable: true },
               items: {
                 type: 'array',
@@ -64,7 +65,12 @@ export async function extractQuoteItemsRoutes(
       const result = await extractQuoteItems(parsed.data.text, {
         language: parsed.data.language,
       });
-      return reply.send({ customerName: result.customerName, vatRate: result.vatRate, items: result.items });
+      return reply.send({
+        customerName: result.customerName,
+        customerAddress: result.customerAddress,
+        vatRate: result.vatRate,
+        items: result.items,
+      });
     }
   );
 }

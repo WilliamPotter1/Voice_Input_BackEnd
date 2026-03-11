@@ -15,6 +15,7 @@ Rules:
 - Output ONLY a valid JSON object with this exact shape (no markdown, no explanation):
   {
     "customerName": "string or null",
+    "customerAddress": "string or null",
     "vatRate": 0.19,
     "items": [
       {
@@ -27,6 +28,7 @@ Rules:
   }
 - "items" must always be an array (possibly empty).
 - "customerName" must be a string with the customer or company name if you can clearly identify it (e.g. "Müller GmbH", "Mr. Smith", "Acme Corp"); otherwise use null.
+- "customerAddress" must be a single string with the customer's address if you can clearly identify it (street, house number, postal code, city, country as far as known from the text); otherwise use null.
 - "vatRate" must be a number between 0 and 1 representing the tax/VAT fraction (e.g. 0.19 for 19%, 0.07 for 7%). If no tax/VAT is clearly specified, use null.
 - Each element must have: "itemName" (string), "quantity" (integer), "unitPrice" (number, in the main currency unit, e.g. euros), and "unit" (string).
 - Infer product/service name from the text. Use clear, professional labels (e.g. "Window installation", "Door installation").
@@ -43,7 +45,7 @@ Rules:
 export async function extractQuoteItems(
   text: string,
   options?: { language?: string }
-): Promise<{ items: QuoteItemInput[]; customerName: string | null; vatRate: number | null }> {
+): Promise<{ items: QuoteItemInput[]; customerName: string | null; customerAddress: string | null; vatRate: number | null }> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not set');
   }
@@ -68,16 +70,22 @@ export async function extractQuoteItems(
   });
 
   const raw = completion.choices[0]?.message?.content?.trim();
-  if (!raw) return { items: [], customerName: null, vatRate: null };
+  if (!raw) return { items: [], customerName: null, customerAddress: null, vatRate: null };
 
   try {
     const parsed = JSON.parse(raw) as unknown;
-    const root = parsed as { items?: unknown[]; customerName?: unknown; vatRate?: unknown } | unknown[];
+    const root = parsed as { items?: unknown[]; customerName?: unknown; customerAddress?: unknown; vatRate?: unknown } | unknown[];
     const arr = Array.isArray(root) ? root : root.items ?? [];
     const customerNameRaw = Array.isArray(root) ? undefined : root.customerName;
     const customerName =
       typeof customerNameRaw === 'string'
         ? customerNameRaw.trim() || null
+        : null;
+
+    const customerAddressRaw = Array.isArray(root) ? undefined : root.customerAddress;
+    const customerAddress =
+      typeof customerAddressRaw === 'string'
+        ? customerAddressRaw.trim() || null
         : null;
 
     const vatRateRaw = Array.isArray(root) ? undefined : root.vatRate;
@@ -99,8 +107,8 @@ export async function extractQuoteItems(
       };
     });
 
-    return { items, customerName, vatRate };
+    return { items, customerName, customerAddress, vatRate };
   } catch {
-    return { items: [], customerName: null, vatRate: null };
+    return { items: [], customerName: null, customerAddress: null, vatRate: null };
   }
 }
