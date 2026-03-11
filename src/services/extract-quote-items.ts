@@ -36,7 +36,9 @@ Rules:
 - For units, DO NOT replace specific phrases with generic ones:
   - If the transcription says "square meter", "m²", or "Quadratmeter", use a unit like "square meter" or "Quadratmeter" (not just "meter").
   - If the transcription says something like "pauschal" (flat fee / lump sum), use a unit like "pauschal" or "lump sum", not "piece".
-  - In general, prefer the most specific unit phrase mentioned in the text, in the same language as the user.`;
+  - If the transcription clearly implies a unit but does not name it explicitly, infer the most precise natural unit from context (for example: for "10 windows" use "window"; for "3 hours of work" use "hour"; for "monthly service" use "month" or "service period").
+  - NEVER fall back to vague generic units like "piece" unless the word "piece" (or its direct translation) is actually used in the transcription.
+  - In general, prefer the most specific unit phrase mentioned or clearly implied in the text, in the same language as the user.`;
 
 export async function extractQuoteItems(
   text: string,
