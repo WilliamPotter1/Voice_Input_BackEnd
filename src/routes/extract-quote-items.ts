@@ -36,6 +36,8 @@ export async function extractQuoteItemsRoutes(
           200: {
             type: 'object',
             properties: {
+              customerName: { type: 'string', nullable: true },
+              vatRate: { type: 'number', nullable: true },
               items: {
                 type: 'array',
                 items: {
@@ -59,10 +61,10 @@ export async function extractQuoteItemsRoutes(
         const msg = parsed.error.issues.map((i) => i.message).join('; ') || 'Validation failed';
         return reply.status(400).send({ error: msg });
       }
-      const items = await extractQuoteItems(parsed.data.text, {
+      const result = await extractQuoteItems(parsed.data.text, {
         language: parsed.data.language,
       });
-      return reply.send({ items });
+      return reply.send({ customerName: result.customerName, vatRate: result.vatRate, items: result.items });
     }
   );
 }

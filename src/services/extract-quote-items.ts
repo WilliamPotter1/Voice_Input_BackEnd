@@ -9,11 +9,13 @@ function getOpenAI() {
   return _openai;
 }
 
-const SYSTEM_PROMPT = `You are a quote extraction assistant. Given a transcription of someone describing products or services and their quantities and prices, extract a structured list of line items.
+const SYSTEM_PROMPT = `You are a quote extraction assistant. Given a transcription of someone describing products or services, their quantities, prices and tax/VAT, extract a structured list of line items and, if possible, the customer's name and tax rate.
 
 Rules:
 - Output ONLY a valid JSON object with this exact shape (no markdown, no explanation):
   {
+    "customerName": "string or null",
+    "vatRate": 0.19,
     "items": [
       {
         "itemName": "string",
@@ -24,37 +26,66 @@ Rules:
     ]
   }
 - "items" must always be an array (possibly empty).
-- Each element must have: "itemName" (string), "quantity" (integer), "unitPrice" (number, in the main currency unit, e.g. euros), and "unit" (string, e.g. "meter", "piece", "hour").
+- "customerName" must be a string with the customer or company name if you can clearly identify it (e.g. "Müller GmbH", "Mr. Smith", "Acme Corp"); otherwise use null.
+- "vatRate" must be a number between 0 and 1 representing the tax/VAT fraction (e.g. 0.19 for 19%, 0.07 for 7%). If no tax/VAT is clearly specified, use null.
+- Each element must have: "itemName" (string), "quantity" (integer), "unitPrice" (number, in the main currency unit, e.g. euros), and "unit" (string).
 - Infer product/service name from the text. Use clear, professional labels (e.g. "Window installation", "Door installation").
 - If the text mentions "3 windows for 250 euros each", output itemName like "Window installation" or "Windows", quantity 3, unitPrice 250.
 - If quantity or price is missing for an item, use quantity 1 and 0 for price.
 - Preserve the currency implied in the text; output numbers only (no currency symbols).
-- If a unit (e.g. "meters", "m", "pieces", "pcs") is mentioned, normalize it to a clear singular form (e.g. "meter", "piece") and set it in "unit".`;
+- For units, DO NOT replace specific phrases with generic ones:
+  - If the transcription says "square meter", "m²", or "Quadratmeter", use a unit like "square meter" or "Quadratmeter" (not just "meter").
+  - If the transcription says something like "pauschal" (flat fee / lump sum), use a unit like "pauschal" or "lump sum", not "piece".
+  - In general, prefer the most specific unit phrase mentioned in the text, in the same language as the user.`;
 
 export async function extractQuoteItems(
   text: string,
-  _options?: { language?: string }
-): Promise<QuoteItemInput[]> {
+  options?: { language?: string }
+): Promise<{ items: QuoteItemInput[]; customerName: string | null; vatRate: number | null }> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not set');
   }
+
+  const languageHint = options?.language;
 
   const completion = await getOpenAI().chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
+      ...(languageHint
+        ? [
+            {
+              role: 'system' as const,
+              content: `Language hint: ${languageHint}. Use this language for itemName and unit labels whenever possible.`,
+            },
+          ]
+        : []),
       { role: 'user', content: text },
     ],
     response_format: { type: 'json_object' },
   });
 
   const raw = completion.choices[0]?.message?.content?.trim();
-  if (!raw) return [];
+  if (!raw) return { items: [], customerName: null, vatRate: null };
 
   try {
     const parsed = JSON.parse(raw) as unknown;
-    const arr = Array.isArray(parsed) ? parsed : (parsed as { items?: unknown[] }).items ?? [];
-    return arr.map((x: unknown) => {
+    const root = parsed as { items?: unknown[]; customerName?: unknown; vatRate?: unknown } | unknown[];
+    const arr = Array.isArray(root) ? root : root.items ?? [];
+    const customerNameRaw = Array.isArray(root) ? undefined : root.customerName;
+    const customerName =
+      typeof customerNameRaw === 'string'
+        ? customerNameRaw.trim() || null
+        : null;
+
+    const vatRateRaw = Array.isArray(root) ? undefined : root.vatRate;
+    const vatRateNum = typeof vatRateRaw === 'number' ? vatRateRaw : Number(vatRateRaw);
+    const vatRate =
+      Number.isFinite(vatRateNum) && vatRateNum >= 0 && vatRateNum <= 1
+        ? vatRateNum
+        : null;
+
+    const items = arr.map((x: unknown) => {
       const o = x as Record<string, unknown>;
       const baseName = String(o.itemName ?? o.name ?? 'Item').trim() || 'Item';
       const unit = String((o as any).unit ?? '').trim();
@@ -65,7 +96,9 @@ export async function extractQuoteItems(
         unitPrice: Math.max(0, Number(o.unitPrice ?? o.price ?? 0)),
       };
     });
+
+    return { items, customerName, vatRate };
   } catch {
-    return [];
+    return { items: [], customerName: null, vatRate: null };
   }
 }
