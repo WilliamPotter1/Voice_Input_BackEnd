@@ -25,6 +25,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           required: ['items'],
           properties: {
             clientName: { type: 'string' },
+            customerAddress: { type: 'string' },
             vatRate: { type: 'number' },
             items: {
               type: 'array',
@@ -45,6 +46,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             properties: {
               id: { type: 'string' },
               clientName: { type: 'string' },
+              customerAddress: { type: 'string' },
               vatRate: { type: 'number' },
               subtotal: { type: 'number' },
               vat: { type: 'number' },
@@ -63,7 +65,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         return reply.status(400).send({ error: msg });
       }
       const userId = request.userId!;
-      const { clientName, vatRate = 0.19, items } = parsed.data;
+      const { clientName, customerAddress, vatRate = 0.19, items } = parsed.data;
 
       let subtotal = 0;
       const itemRows = items.map((it) => {
@@ -83,18 +85,22 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         data: {
           userId,
           clientName: clientName ?? null,
+          // customerAddress is present in Prisma schema; cast to any to satisfy older generated types
+          ...(customerAddress !== undefined ? { customerAddress } : {}),
           vatRate,
           subtotal,
           vat: vatAmount,
           total,
           items: { create: itemRows },
-        },
+        } as any,
         include: { items: true },
       });
 
+      const quoteWithAddress = quote as any;
       return reply.status(201).send({
-        id: quote.id,
-        clientName: quote.clientName,
+        id: quoteWithAddress.id,
+        clientName: quoteWithAddress.clientName,
+        customerAddress: quoteWithAddress.customerAddress ?? null,
         vatRate: quote.vatRate,
         subtotal: quote.subtotal,
         vat: quote.vat,
@@ -123,6 +129,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
               properties: {
                 id: { type: 'string' },
                 clientName: { type: 'string' },
+                customerAddress: { type: 'string' },
                 subtotal: { type: 'number' },
                 vat: { type: 'number' },
                 total: { type: 'number' },
@@ -138,18 +145,11 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       const quotes = await prisma.quote.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          clientName: true,
-          subtotal: true,
-          vat: true,
-          total: true,
-          createdAt: true,
-        },
       });
-      return quotes.map((q: { id: string; clientName: string | null; subtotal: number; vat: number; total: number; createdAt: Date }) => ({
+      return quotes.map((q: any) => ({
         id: q.id,
         clientName: q.clientName,
+        customerAddress: q.customerAddress ?? null,
         subtotal: q.subtotal,
         vat: q.vat,
         total: q.total,
@@ -169,6 +169,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             properties: {
               id: { type: 'string' },
               clientName: { type: 'string' },
+              customerAddress: { type: 'string' },
               vatRate: { type: 'number' },
               subtotal: { type: 'number' },
               vat: { type: 'number' },
@@ -204,6 +205,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       return {
         id: quote.id,
         clientName: quote.clientName,
+        customerAddress: (quote as any).customerAddress ?? null,
         vatRate: quote.vatRate,
         subtotal: quote.subtotal,
         vat: quote.vat,
@@ -229,6 +231,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           type: 'object',
           properties: {
             clientName: { type: 'string' },
+            customerAddress: { type: 'string' },
             vatRate: { type: 'number' },
             items: {
               type: 'array',
@@ -262,13 +265,15 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       const existing = await prisma.quote.findFirst({ where: { id, userId }, include: { items: true } });
       if (!existing) return reply.status(404).send({ error: 'Quote not found' });
 
-      const { clientName, vatRate, items: itemsInput } = parsed.data;
+      const { clientName, customerAddress, vatRate, items: itemsInput } = parsed.data;
       const vatRateNum = vatRate ?? existing.vatRate;
-      const itemsToUse = itemsInput ?? existing.items.map((i: { itemName: string; quantity: number; price: number }) => ({
-        itemName: i.itemName,
-        quantity: i.quantity,
-        unitPrice: i.price,
-      }));
+      const itemsToUse =
+        itemsInput ??
+        (existing.items as any[]).map((i) => ({
+          itemName: i.itemName,
+          quantity: i.quantity,
+          unitPrice: i.price,
+        }));
       const subtotal = itemsToUse.reduce((s: number, it: { quantity: number; unitPrice: number }) => s + it.quantity * it.unitPrice, 0);
       const vatAmount = subtotal * vatRateNum;
       const total = subtotal + vatAmount;
@@ -278,6 +283,11 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         where: { id },
         data: {
           clientName: clientName !== undefined ? clientName : existing.clientName,
+          ...(customerAddress !== undefined
+            ? { customerAddress }
+            : (existing as any).customerAddress !== undefined
+              ? { customerAddress: (existing as any).customerAddress }
+              : {}),
           vatRate: vatRateNum,
           subtotal,
           vat: vatAmount,
@@ -290,13 +300,14 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
               total: it.quantity * it.unitPrice,
             })),
           },
-        },
+        } as any,
         include: { items: true },
       });
 
       return {
         id: quote.id,
         clientName: quote.clientName,
+        customerAddress: (quote as any).customerAddress ?? null,
         vatRate: quote.vatRate,
         subtotal: quote.subtotal,
         vat: quote.vat,
