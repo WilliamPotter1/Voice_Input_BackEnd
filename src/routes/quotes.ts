@@ -505,6 +505,46 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       },
     },
     async (request, reply) => {
+      const { id, attachmentId } = request.params as { id: string; attachmentId: string };
+
+      const att = await (prisma as any).quoteAttachment.findFirst({ where: { id: attachmentId, quoteId: id } });
+      if (!att) {
+        return reply.status(400).send({ error: 'Attachment not found' });
+      }
+
+      const filePath = path.join(ATTACHMENTS_DIR, att.path);
+      if (!fs.existsSync(filePath)) {
+        return reply.status(400).send({ error: 'File not found' });
+      }
+
+      const stream = fs.createReadStream(filePath);
+      const isInline =
+        att.mimeType === 'application/pdf' || att.mimeType.startsWith('image/');
+      const dispositionType = isInline ? 'inline' : 'attachment';
+      return reply
+        .header('Content-Type', att.mimeType)
+        .header('Content-Disposition', `${dispositionType}; filename="${att.filename}"`)
+        .send(stream);
+    }
+  );
+
+  app.delete(
+    '/quotes/:id/attachments/:attachmentId',
+    {
+      preHandler: requireAuth,
+      schema: {
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string' }, attachmentId: { type: 'string' } },
+          required: ['id', 'attachmentId'],
+        },
+        response: {
+          204: { type: 'null' },
+          400: { type: 'object', properties: { error: { type: 'string' } } },
+        },
+      },
+    },
+    async (request, reply) => {
       const userId = request.userId!;
       const { id, attachmentId } = request.params as { id: string; attachmentId: string };
 
@@ -519,15 +559,15 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       }
 
       const filePath = path.join(ATTACHMENTS_DIR, att.path);
-      if (!fs.existsSync(filePath)) {
-        return reply.status(400).send({ error: 'File not found' });
+      try {
+        await fsp.unlink(filePath);
+      } catch {
+        // ignore file system errors (already deleted, etc.)
       }
 
-      const stream = fs.createReadStream(filePath);
-      return reply
-        .header('Content-Type', att.mimeType)
-        .header('Content-Disposition', `attachment; filename="${att.filename}"`)
-        .send(stream);
+      await (prisma as any).quoteAttachment.delete({ where: { id: attachmentId } });
+
+      return reply.status(204).send();
     }
   );
 }
