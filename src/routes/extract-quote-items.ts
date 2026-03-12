@@ -46,7 +46,7 @@ export async function extractQuoteItemsRoutes(
                   type: 'object',
                   properties: {
                     itemName: { type: 'string' },
-                    quantity: { type: 'integer' },
+                    quantity: { type: 'number' },
                     unitPrice: { type: 'number' },
                   },
                 },

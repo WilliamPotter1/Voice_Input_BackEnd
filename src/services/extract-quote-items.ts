@@ -117,11 +117,9 @@ export async function extractQuoteItems(
       const nameWithUnit = unit ? `${baseName} (${unit})` : baseName;
 
       const rawQtyVal = (o as any).quantity;
-      console.log('rawQtyVal', rawQtyVal);
       const qtyString = String(rawQtyVal ?? '').replace(',', '.').trim();
       const qtyNumber = qtyString === '' ? NaN : parseFloat(qtyString);
       const quantity = !Number.isNaN(qtyNumber) && qtyNumber >= 0 ? qtyNumber : 0;
-      console.log('quantity', quantity);
 
       const rawPriceVal = (o as any).unitPrice ?? (o as any).price ?? 0;
       const priceNumber =
