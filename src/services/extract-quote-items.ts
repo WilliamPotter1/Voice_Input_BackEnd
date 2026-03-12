@@ -117,6 +117,7 @@ export async function extractQuoteItems(
       const nameWithUnit = unit ? `${baseName} (${unit})` : baseName;
 
       const rawQtyVal = (o as any).quantity;
+      console.log('rawQtyVal', rawQtyVal);
       const qtyNumber =
         typeof rawQtyVal === 'string'
           ? Number(rawQtyVal.replace(',', '.'))
