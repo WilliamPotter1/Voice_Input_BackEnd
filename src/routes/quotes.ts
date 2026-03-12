@@ -1,6 +1,9 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../lib/db.js';
 import { createQuoteBodySchema, updateQuoteBodySchema } from '../schemas/quotes.js';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
 
 async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
   try {
@@ -15,6 +18,7 @@ async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
 
 export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOptions) {
   app.addHook('preHandler', requireAuth);
+  const ATTACHMENTS_DIR = process.env.ATTACHMENTS_DIR ?? path.join(process.cwd(), 'uploads');
 
   app.post(
     '/quotes',
@@ -355,6 +359,169 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       if (!q) return reply.status(404).send({ error: 'Quote not found' });
       await prisma.quote.delete({ where: { id } });
       return reply.status(204).send();
+    }
+  );
+
+  // Attachments
+  app.post(
+    '/quotes/:id/attachments',
+    {
+      schema: {
+        description: 'Upload an attachment for a quote',
+        params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              filename: { type: 'string' },
+              mimeType: { type: 'string' },
+              size: { type: 'number' },
+              url: { type: 'string' },
+              createdAt: { type: 'string' },
+            },
+          },
+          400: { type: 'object', properties: { error: { type: 'string' } } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.userId!;
+      const { id } = request.params as { id: string };
+
+      const quote = await prisma.quote.findFirst({ where: { id, userId } });
+      if (!quote) {
+        return reply.status(400).send({ error: 'Quote not found' });
+      }
+
+      const data = await (request as any).file?.();
+      if (!data) return reply.status(400).send({ error: 'No file uploaded' });
+
+      const buf = await data.toBuffer();
+      if (buf.length > 25 * 1024 * 1024) {
+        return reply.status(400).send({ error: 'File too large. Max 25 MB.' });
+      }
+
+      const filename: string = data.filename ?? 'attachment';
+      const mimeType: string = data.mimetype ?? 'application/octet-stream';
+
+      await fsp.mkdir(ATTACHMENTS_DIR, { recursive: true });
+      const safeName = filename.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      const storedName = `${id}-${Date.now()}-${safeName}`;
+      const fullPath = path.join(ATTACHMENTS_DIR, storedName);
+      await fsp.writeFile(fullPath, buf);
+
+      const attachment = await (prisma as any).quoteAttachment.create({
+        data: {
+          quoteId: id,
+          filename,
+          mimeType,
+          size: buf.length,
+          path: storedName,
+        },
+      });
+
+      const url = `/api/quotes/${id}/attachments/${attachment.id}/download`;
+
+      return reply.send({
+        id: attachment.id,
+        filename: attachment.filename,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        url,
+        createdAt: attachment.createdAt.toISOString(),
+      });
+    }
+  );
+
+  app.get(
+    '/quotes/:id/attachments',
+    {
+      schema: {
+        params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+        response: {
+          200: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                filename: { type: 'string' },
+                mimeType: { type: 'string' },
+                size: { type: 'number' },
+                url: { type: 'string' },
+                createdAt: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.userId!;
+      const { id } = request.params as { id: string };
+
+      const quote = await prisma.quote.findFirst({ where: { id, userId } });
+      if (!quote) return reply.status(200).send({ error: 'Quote not found' } as any);
+
+      const atts = await (prisma as any).quoteAttachment.findMany({
+        where: { quoteId: id },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      const base = '/api/quotes';
+      const mapped = atts.map((a: any) => ({
+        id: a.id,
+        filename: a.filename,
+        mimeType: a.mimeType,
+        size: a.size,
+        url: `${base}/${id}/attachments/${a.id}/download`,
+        createdAt: a.createdAt.toISOString(),
+      }));
+
+      return reply.send(mapped);
+    }
+  );
+
+  app.get(
+    '/quotes/:id/attachments/:attachmentId/download',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string' }, attachmentId: { type: 'string' } },
+          required: ['id', 'attachmentId'],
+        },
+        response: {
+          200: { type: 'string' },
+          400: { type: 'object', properties: { error: { type: 'string' } } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.userId!;
+      const { id, attachmentId } = request.params as { id: string; attachmentId: string };
+
+      const quote = await prisma.quote.findFirst({ where: { id, userId } });
+      if (!quote) {
+        return reply.status(400).send({ error: 'Quote not found' });
+      }
+
+      const att = await (prisma as any).quoteAttachment.findFirst({ where: { id: attachmentId, quoteId: id } });
+      if (!att) {
+        return reply.status(400).send({ error: 'Attachment not found' });
+      }
+
+      const filePath = path.join(ATTACHMENTS_DIR, att.path);
+      if (!fs.existsSync(filePath)) {
+        return reply.status(400).send({ error: 'File not found' });
+      }
+
+      const stream = fs.createReadStream(filePath);
+      return reply
+        .header('Content-Type', att.mimeType)
+        .header('Content-Disposition', `attachment; filename="${att.filename}"`)
+        .send(stream);
     }
   );
 }

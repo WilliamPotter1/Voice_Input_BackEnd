@@ -69,7 +69,7 @@ export async function extractQuoteItems(
         ? [
             {
               role: 'system' as const,
-              content: `Language hint: ${languageHint}. Use this language for itemName and unit labels whenever possible.`,
+              content: `Language hint: ${languageHint}. You MUST use exactly this language for itemName and unit labels, including all units of measure. Do NOT use English words for units when the language is not English.`,
             },
           ]
         : []),

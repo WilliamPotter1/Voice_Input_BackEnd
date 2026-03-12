@@ -34,6 +34,7 @@ model Quote {
 
   user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   items QuoteItem[]
+  attachments QuoteAttachment[]
 
   @@map("quotes")
 }
@@ -49,4 +50,18 @@ model QuoteItem {
   quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 
   @@map("quote_items")
+}
+
+model QuoteAttachment {
+  id        String   @id @default(uuid())
+  quoteId   String   @map("quote_id")
+  filename  String
+  mimeType  String   @map("mime_type")
+  size      Int
+  path      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@map("quote_attachments")
 }
