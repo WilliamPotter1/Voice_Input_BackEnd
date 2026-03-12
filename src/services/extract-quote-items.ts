@@ -121,7 +121,7 @@ export async function extractQuoteItems(
         typeof rawQtyVal === 'string'
           ? Number(rawQtyVal.replace(',', '.'))
           : Number(rawQtyVal);
-      const quantity = Number.isFinite(qtyNumber) && qtyNumber > 0 ? qtyNumber : 1;
+      const quantity = Number.isFinite(qtyNumber) && qtyNumber >= 0 ? qtyNumber : 0;
 
       const rawPriceVal = (o as any).unitPrice ?? (o as any).price ?? 0;
       const priceNumber =
