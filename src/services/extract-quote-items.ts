@@ -39,7 +39,7 @@ Rules:
 - If you only know some parts, still keep the same order and omit the missing pieces, e.g. "10115 Berlin" or "10115 Berlin, Invalidenstraße".
 - "vatRate" must be a number between 0 and 1 representing the tax/VAT fraction (e.g. 0.19 for 19%, 0.07 for 7%). If no tax/VAT is clearly specified, use null.
 - "currency" must be a 3-letter ISO 4217 currency code (e.g. "EUR", "CHF", "USD") that matches the main currency implied in the text. If you cannot confidently determine the currency, use "EUR" by default.
-- Each element must have: "itemName" (string), "quantity" (integer), "unitPrice" (number, in the main currency unit, e.g. euros), and "unit" (string).
+- Each element must have: "itemName" (string), "quantity" (number, can be fractional like 0.5), "unitPrice" (number, in the main currency unit, e.g. euros), and "unit" (string).
 - Infer product/service name from the text. Use clear, professional labels (e.g. "Window installation", "Door installation").
 - If the text mentions "3 windows for 250 euros each", output itemName like "Window installation" or "Windows", quantity 3, unitPrice 250.
 - If quantity or price is missing for an item, use quantity 1 and 0 for price.
@@ -115,10 +115,21 @@ export async function extractQuoteItems(
       const baseName = String(o.itemName ?? o.name ?? 'Item').trim() || 'Item';
       const unit = String((o as any).unit ?? '').trim();
       const nameWithUnit = unit ? `${baseName} (${unit})` : baseName;
-      const qtyRaw = Number(o.quantity);
-      const quantity = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
-      const priceRaw = Number(o.unitPrice ?? o.price ?? 0);
-      const unitPrice = Number.isFinite(priceRaw) && priceRaw >= 0 ? priceRaw : 0;
+
+      const rawQtyVal = (o as any).quantity;
+      const qtyNumber =
+        typeof rawQtyVal === 'string'
+          ? Number(rawQtyVal.replace(',', '.'))
+          : Number(rawQtyVal);
+      const quantity = Number.isFinite(qtyNumber) && qtyNumber > 0 ? qtyNumber : 1;
+
+      const rawPriceVal = (o as any).unitPrice ?? (o as any).price ?? 0;
+      const priceNumber =
+        typeof rawPriceVal === 'string'
+          ? Number(rawPriceVal.replace(',', '.'))
+          : Number(rawPriceVal);
+      const unitPrice = Number.isFinite(priceNumber) && priceNumber >= 0 ? priceNumber : 0;
+
       return {
         itemName: nameWithUnit,
         quantity,
