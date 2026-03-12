@@ -115,10 +115,14 @@ export async function extractQuoteItems(
       const baseName = String(o.itemName ?? o.name ?? 'Item').trim() || 'Item';
       const unit = String((o as any).unit ?? '').trim();
       const nameWithUnit = unit ? `${baseName} (${unit})` : baseName;
+      const qtyRaw = Number(o.quantity);
+      const quantity = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
+      const priceRaw = Number(o.unitPrice ?? o.price ?? 0);
+      const unitPrice = Number.isFinite(priceRaw) && priceRaw >= 0 ? priceRaw : 0;
       return {
         itemName: nameWithUnit,
-        quantity: Math.max(1, Number(o.quantity) || 1),
-        unitPrice: Math.max(0, Number(o.unitPrice ?? o.price ?? 0)),
+        quantity,
+        unitPrice,
       };
     });
 
