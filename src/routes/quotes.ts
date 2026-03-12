@@ -17,12 +17,12 @@ async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOptions) {
-  app.addHook('preHandler', requireAuth);
   const ATTACHMENTS_DIR = process.env.ATTACHMENTS_DIR ?? path.join(process.cwd(), 'uploads');
 
   app.post(
     '/quotes',
     {
+      preHandler: requireAuth,
       schema: {
         body: {
           type: 'object',
@@ -126,6 +126,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
   app.get(
     '/quotes',
     {
+      preHandler: requireAuth,
       schema: {
         response: {
           200: {
@@ -169,6 +170,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
   app.get(
     '/quotes/:id',
     {
+      preHandler: requireAuth,
       schema: {
         params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
         response: {
@@ -235,6 +237,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
   app.patch(
     '/quotes/:id',
     {
+      preHandler: requireAuth,
       schema: {
         params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
         body: {
@@ -344,6 +347,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
   app.delete(
     '/quotes/:id',
     {
+      preHandler: requireAuth,
       schema: {
         params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
         response: {
@@ -366,6 +370,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
   app.post(
     '/quotes/:id/attachments',
     {
+      preHandler: requireAuth,
       schema: {
         description: 'Upload an attachment for a quote',
         params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
@@ -437,6 +442,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
   app.get(
     '/quotes/:id/attachments',
     {
+      preHandler: requireAuth,
       schema: {
         params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
         response: {
