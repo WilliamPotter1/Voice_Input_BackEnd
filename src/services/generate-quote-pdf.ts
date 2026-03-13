@@ -455,7 +455,7 @@ export function generateQuotePdf(
       doc.fillColor('#2563eb')
         .text(`• ${att.filename}`, ML + 6, cy, {
           width: CONTENT_W - 6,
-          link: att.url,
+          link: `/api${att.url}`,
           underline: true,
         });
       cy = doc.y + 2;
