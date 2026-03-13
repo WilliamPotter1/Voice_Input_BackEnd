@@ -1,11 +1,28 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyRequest, FastifyReply } from 'fastify';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
 import { prisma } from '../lib/db.js';
 import { createQuoteBodySchema, updateQuoteBodySchema } from '../schemas/quotes.js';
 import { generateQuotePdf } from '../services/generate-quote-pdf.js';
 import { sendQuoteEmail, sendQuoteWhatsapp } from '../services/send-quote.js';
-import fs from 'node:fs';
-import fsp from 'node:fs/promises';
-import path from 'node:path';
+
+const SEND_TOKEN_TTL_MS = 15 * 60 * 1000;
+const sendTokenStore = new Map<
+  string,
+  { quoteId: string; userId: string; quoteDate: string; validUntil: string; lang: string; createdAt: number }
+>();
+
+function getSendTokenPayload(token: string) {
+  const payload = sendTokenStore.get(token);
+  if (!payload) return null;
+  if (Date.now() - payload.createdAt > SEND_TOKEN_TTL_MS) {
+    sendTokenStore.delete(token);
+    return null;
+  }
+  return payload;
+}
 
 async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
   try {
@@ -555,11 +572,20 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             attachments: fileAttachments,
           });
         } else {
+          const sendToken = crypto.randomBytes(24).toString('hex');
+          sendTokenStore.set(sendToken, {
+            quoteId: id,
+            userId,
+            quoteDate,
+            validUntil,
+            lang,
+            createdAt: Date.now(),
+          });
           const baseUrl = `${request.protocol}://${request.hostname}`;
           const mediaUrls = [
-            `${baseUrl}/api/quotes/${id}/pdf?quoteDate=${encodeURIComponent(quoteDate)}&validUntil=${encodeURIComponent(validUntil)}&lang=${lang}`,
+            `${baseUrl}/api/quotes/send/${sendToken}/pdf`,
             ...((attachments as any[]).map(
-              (a: any) => `${baseUrl}/api/quotes/${id}/attachments/${a.id}/download`,
+              (a: any) => `${baseUrl}/api/quotes/send/${sendToken}/attachments/${a.id}/download`,
             ) as string[]),
           ];
           await sendQuoteWhatsapp({
@@ -574,6 +600,84 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       }
 
       return reply.send({ ok: true });
+    },
+  );
+
+  // Public send links (no auth) so Twilio can fetch PDF + attachments and send as files
+  app.get(
+    '/quotes/send/:token/pdf',
+    async (request, reply) => {
+      const { token } = request.params as { token: string };
+      const payload = getSendTokenPayload(token);
+      if (!payload) return reply.status(404).send({ error: 'Link expired or invalid' });
+
+      const [quote, user, attachmentList] = await Promise.all([
+        prisma.quote.findFirst({ where: { id: payload.quoteId, userId: payload.userId }, include: { items: true } }),
+        prisma.user.findUnique({ where: { id: payload.userId } }),
+        (prisma as any).quoteAttachment.findMany({ where: { quoteId: payload.quoteId }, orderBy: { createdAt: 'asc' } }),
+      ]);
+      if (!quote || !user) return reply.status(404).send({ error: 'Quote not found' });
+
+      const quoteNumber = quote.id.slice(0, 8).toUpperCase();
+      const pdfDoc = generateQuotePdf(
+        {
+          id: quote.id,
+          clientName: quote.clientName,
+          customerAddress: (quote as any).customerAddress ?? null,
+          currency: (quote as any).currency ?? 'EUR',
+          vatRate: quote.vatRate,
+          subtotal: quote.subtotal,
+          vat: quote.vat,
+          total: quote.total,
+          items: quote.items.map((i: any) => ({ itemName: i.itemName, quantity: i.quantity, price: i.price, total: i.total })),
+          attachments: (attachmentList as any[]).map((a: any) => ({ filename: a.filename, url: '' })),
+        },
+        {
+          name: (user as any).name ?? null,
+          phone: (user as any).phone ?? null,
+          email: user.email,
+          companyName: (user as any).companyName ?? null,
+          companyAddress: (user as any).companyAddress ?? null,
+          websiteUrl: (user as any).websiteUrl ?? null,
+          bankName: (user as any).bankName ?? null,
+          blz: (user as any).blz ?? null,
+          kto: (user as any).kto ?? null,
+          iban: (user as any).iban ?? null,
+          bic: (user as any).bic ?? null,
+          taxNumber: (user as any).taxNumber ?? null,
+          taxOfficeName: (user as any).taxOfficeName ?? null,
+        },
+        { quoteDate: payload.quoteDate, validUntil: payload.validUntil, quoteNumber, lang: payload.lang },
+      );
+      const clientLabel = quote.clientName?.replace(/[^a-zA-Z0-9]/g, '_') ?? 'Angebot';
+      reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', `attachment; filename="Angebot-${clientLabel}-${quoteNumber}.pdf"`);
+      return reply.send(pdfDoc);
+    },
+  );
+
+  app.get(
+    '/quotes/send/:token/attachments/:attachmentId/download',
+    async (request, reply) => {
+      const { token, attachmentId } = request.params as { token: string; attachmentId: string };
+      const payload = getSendTokenPayload(token);
+      if (!payload) return reply.status(404).send({ error: 'Link expired or invalid' });
+
+      const att = await (prisma as any).quoteAttachment.findFirst({
+        where: { id: attachmentId, quoteId: payload.quoteId },
+      });
+      if (!att) return reply.status(404).send({ error: 'Attachment not found' });
+
+      const filePath = path.join(ATTACHMENTS_DIR, att.path);
+      if (!fs.existsSync(filePath)) return reply.status(404).send({ error: 'File not found' });
+
+      const stream = fs.createReadStream(filePath);
+      const isInline = att.mimeType === 'application/pdf' || att.mimeType.startsWith('image/');
+      reply
+        .header('Content-Type', att.mimeType)
+        .header('Content-Disposition', `${isInline ? 'inline' : 'attachment'}; filename="${att.filename}"`);
+      return reply.send(stream);
     },
   );
 
