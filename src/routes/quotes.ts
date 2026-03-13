@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyPluginOptions, FastifyRequest, FastifyRepl
 import { prisma } from '../lib/db.js';
 import { createQuoteBodySchema, updateQuoteBodySchema } from '../schemas/quotes.js';
 import { generateQuotePdf } from '../services/generate-quote-pdf.js';
+import { sendQuoteEmail, sendQuoteWhatsapp } from '../services/send-quote.js';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -448,6 +449,131 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         .header('Content-Disposition', `inline; filename="${pdfTitle}-${clientLabel}-${quoteNumber}.pdf"`);
 
       return reply.send(pdfDoc);
+    },
+  );
+
+  // Send quote via email or WhatsApp
+  app.post(
+    '/quotes/:id/send',
+    {
+      preHandler: requireAuth,
+      schema: {
+        params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+        body: {
+          type: 'object',
+          properties: {
+            channel: { type: 'string', enum: ['email', 'whatsapp'] },
+            recipient: { type: 'string' },
+            quoteDate: { type: 'string' },
+            validUntil: { type: 'string' },
+          },
+          required: ['channel', 'recipient', 'quoteDate', 'validUntil'],
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.userId!;
+      const { id } = request.params as { id: string };
+      const { channel, recipient, quoteDate, validUntil } = request.body as {
+        channel: 'email' | 'whatsapp';
+        recipient: string;
+        quoteDate: string;
+        validUntil: string;
+      };
+
+      const [quote, user, attachments] = await Promise.all([
+        prisma.quote.findFirst({ where: { id, userId }, include: { items: true } }),
+        prisma.user.findUnique({ where: { id: userId } }),
+        (prisma as any).quoteAttachment.findMany({ where: { quoteId: id }, orderBy: { createdAt: 'asc' } }),
+      ]);
+      if (!quote) return reply.status(404).send({ error: 'Quote not found' });
+      if (!user) return reply.status(404).send({ error: 'User not found' });
+
+      const quoteNumber = quote.id.slice(0, 8).toUpperCase();
+      const lang = 'de';
+
+      // Generate PDF into buffer
+      const pdfDoc = generateQuotePdf(
+        {
+          id: quote.id,
+          clientName: quote.clientName,
+          customerAddress: (quote as any).customerAddress ?? null,
+          currency: (quote as any).currency ?? 'EUR',
+          vatRate: quote.vatRate,
+          subtotal: quote.subtotal,
+          vat: quote.vat,
+          total: quote.total,
+          items: quote.items.map((i: any) => ({
+            itemName: i.itemName,
+            quantity: i.quantity,
+            price: i.price,
+            total: i.total,
+          })),
+          attachments: [],
+        },
+        {
+          name: (user as any).name ?? null,
+          phone: (user as any).phone ?? null,
+          email: user.email,
+          companyName: (user as any).companyName ?? null,
+          companyAddress: (user as any).companyAddress ?? null,
+          websiteUrl: (user as any).websiteUrl ?? null,
+          bankName: (user as any).bankName ?? null,
+          blz: (user as any).blz ?? null,
+          kto: (user as any).kto ?? null,
+          iban: (user as any).iban ?? null,
+          bic: (user as any).bic ?? null,
+          taxNumber: (user as any).taxNumber ?? null,
+          taxOfficeName: (user as any).taxOfficeName ?? null,
+        },
+        { quoteDate, validUntil, quoteNumber, lang },
+      );
+
+      const pdfChunks: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        pdfDoc.on('data', (c) => pdfChunks.push(c as Buffer));
+        pdfDoc.on('end', () => resolve());
+        pdfDoc.on('error', reject);
+      });
+      const pdfBuffer = Buffer.concat(pdfChunks);
+
+      const fileAttachments = (attachments as any[]).map((a: any) => ({
+        filename: a.filename,
+        path: path.join(ATTACHMENTS_DIR, a.path),
+      }));
+
+      try {
+        if (channel === 'email') {
+          await sendQuoteEmail({
+            to: recipient,
+            subject: `Angebot ${quoteNumber}`,
+            text: 'Im Anhang finden Sie Ihr Angebot als PDF sowie die zugehörigen Dateien.',
+            pdf: {
+              filename: `Angebot-${quoteNumber}.pdf`,
+              content: pdfBuffer,
+            },
+            attachments: fileAttachments,
+          });
+        } else {
+          const baseUrl = `${request.protocol}://${request.hostname}`;
+          const mediaUrls = [
+            `${baseUrl}/api/quotes/${id}/pdf?quoteDate=${encodeURIComponent(quoteDate)}&validUntil=${encodeURIComponent(validUntil)}&lang=${lang}`,
+            ...((attachments as any[]).map(
+              (a: any) => `${baseUrl}/api/quotes/${id}/attachments/${a.id}/download`,
+            ) as string[]),
+          ];
+          await sendQuoteWhatsapp({
+            to: recipient,
+            body: 'Ihr Angebot wurde Ihnen zugesendet.',
+            mediaUrls,
+          });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to send quote';
+        return reply.status(400).send({ error: msg });
+      }
+
+      return reply.send({ ok: true });
     },
   );
 
