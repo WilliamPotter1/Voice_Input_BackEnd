@@ -250,15 +250,13 @@ function textRight(
 // Main generator
 // ---------------------------------------------------------------------------
 
-const ML = 60;              // left margin
-const MR = 60;              // right margin
-const PAGE_W = 595.28;      // A4 width in pt
+const ML = 60;
+const MR = 60;
+const PAGE_W = 595.28;
+const PAGE_H = 841.89;
 const CONTENT_W = PAGE_W - ML - MR;
-
-const BODY = 10;             // body font size
-const SMALL = 8.5;           // small labels & footer
-const H1 = 22;              // main title
-const LINE_H = 14;          // line height for body text
+const FOOTER_H = 75;        // space reserved for footer block
+const FOOTER_TOP = PAGE_H - 40 - FOOTER_H;  // ~727
 
 export function generateQuotePdf(
   quote: PdfQuote,
@@ -267,7 +265,7 @@ export function generateQuotePdf(
 ): PDFKit.PDFDocument {
   const doc = new PDFDocument({
     size: 'A4',
-    margins: { top: 45, bottom: 50, left: ML, right: MR },
+    margins: { top: 45, bottom: 40, left: ML, right: MR },
     bufferPages: true,
   });
 
@@ -275,19 +273,41 @@ export function generateQuotePdf(
   const s = getStrings(options.lang);
   const R = 'Helvetica';
   const B = 'Helvetica-Bold';
+  const nItems = quote.items.length;
+
+  // ---------------------------------------------------------------
+  // Adaptive sizing: scale gaps & row heights so content fits
+  // ---------------------------------------------------------------
+  // Fixed vertical budget consumed by non-table content (~410pt at "normal").
+  // Available for table rows = FOOTER_TOP - headerEnd - fixedBody.
+  // We compute headerEnd after drawing it, then adjust row height.
+  const HEADER_END   = 185;   // approximate Y after header+title
+  const FIXED_BODY   = 260;   // greeting+intro+totals+closing+signature
+  const availForRows = FOOTER_TOP - HEADER_END - FIXED_BODY;
+  const idealRowH    = 22;
+  const neededRows   = idealRowH * nItems + 26; // 26 for header
+  const tight        = neededRows > availForRows;
+
+  // Scaled values
+  const rowH    = tight ? Math.max(14, Math.floor((availForRows - 20) / Math.max(nItems, 1))) : idealRowH;
+  const hdrH    = tight ? 20 : 26;
+  const gapSec  = tight ? 8  : 18;  // gap between major sections
+  const gapLine = tight ? 3  : 8;   // gap between text lines within a section
+  const bodyFs  = tight ? 9  : 10;  // body font size
+  const tblFs   = tight ? 8  : 9;   // table font size
+  const titleFs = tight ? 18 : 22;
+
+  const PAD = 6;
 
   // =====================================================================
-  //  HEADER AREA  (sender one-liner + client block + company block)
+  //  HEADER  (sender one-liner + client block + company block)
   // =====================================================================
-
-  // Sender one-liner (tiny, underlined)
   doc.font(R).fontSize(7).fillColor('#888888');
   const senderLine = [user.companyName, user.companyAddress].filter(Boolean).join('  ·  ');
   doc.text(senderLine, ML, 45, { underline: true, width: 260 });
 
-  // Client address block (left side)
-  const addrTop = 72;
-  doc.fillColor('#000000').font(R).fontSize(BODY);
+  const addrTop = 68;
+  doc.fillColor('#000000').font(R).fontSize(bodyFs);
   let ay = addrTop;
   if (quote.clientName) {
     doc.font(B).text(quote.clientName, ML, ay, { width: 250 });
@@ -295,207 +315,172 @@ export function generateQuotePdf(
     doc.font(R);
   }
   if (quote.customerAddress) {
-    doc.text(quote.customerAddress, ML, ay, { width: 250, lineGap: 2 });
+    doc.text(quote.customerAddress, ML, ay, { width: 250, lineGap: 1 });
   }
 
-  // Company info block (right side)
   const rightX = 370;
   const rightW = PAGE_W - MR - rightX;
   let ry = addrTop;
-  doc.font(B).fontSize(BODY).text(user.companyName ?? '', rightX, ry, { width: rightW });
-  ry = doc.y + 2;
-  doc.font(R).fontSize(9);
-  if (user.companyAddress) {
-    doc.text(user.companyAddress, rightX, ry, { width: rightW, lineGap: 1 });
-    ry = doc.y + 6;
-  }
-  if (user.phone) {
-    doc.text(`Tel.: ${user.phone}`, rightX, ry, { width: rightW });
-    ry = doc.y + 1;
-  }
-  doc.text(`E-Mail: ${user.email}`, rightX, ry, { width: rightW });
+  doc.font(B).fontSize(bodyFs).text(user.companyName ?? '', rightX, ry, { width: rightW });
   ry = doc.y + 1;
-  if (user.websiteUrl) {
-    doc.text(`Internet: ${user.websiteUrl}`, rightX, ry, { width: rightW });
-    ry = doc.y + 1;
-  }
-  ry += 8;
-  doc.font(R).fontSize(9);
-  doc.text(`${s.quoteNr}: ${options.quoteNumber}`, rightX, ry, { width: rightW });
-  ry = doc.y + 1;
+  doc.font(R).fontSize(8.5);
+  if (user.companyAddress) { doc.text(user.companyAddress, rightX, ry, { width: rightW, lineGap: 1 }); ry = doc.y + 4; }
+  if (user.phone)          { doc.text(`Tel.: ${user.phone}`, rightX, ry, { width: rightW }); ry = doc.y + 1; }
+  doc.text(`E-Mail: ${user.email}`, rightX, ry, { width: rightW }); ry = doc.y + 1;
+  if (user.websiteUrl)     { doc.text(`Internet: ${user.websiteUrl}`, rightX, ry, { width: rightW }); ry = doc.y + 1; }
+  ry += 6;
+  doc.text(`${s.quoteNr}: ${options.quoteNumber}`, rightX, ry, { width: rightW }); ry = doc.y + 1;
   doc.text(`${s.date}: ${options.quoteDate}`, rightX, ry, { width: rightW });
 
   // =====================================================================
   //  TITLE
   // =====================================================================
-  const titleY = Math.max(doc.y, ry, 168) + 18;
-  doc.font(B).fontSize(H1).fillColor('#1a1a1a');
+  const titleY = Math.max(doc.y, ry, 160) + gapSec;
+  doc.font(B).fontSize(titleFs).fillColor('#1a1a1a');
   doc.text(s.title, ML, titleY);
 
   // =====================================================================
   //  GREETING & INTRO
   // =====================================================================
-  let cy = doc.y + 24;
-  doc.font(R).fontSize(BODY).fillColor('#000000');
-  const greeting = quote.clientName
-    ? s.greetingNamed(quote.clientName)
-    : s.greetingGeneric;
-  doc.text(greeting, ML, cy, { width: CONTENT_W, lineGap: 3 });
-
-  cy = doc.y + 10;
-  doc.text(s.intro, ML, cy, { width: CONTENT_W, lineGap: 3 });
-  cy = doc.y + 6;
-  doc.text(s.introOffer, ML, cy, { width: CONTENT_W, lineGap: 3 });
+  let cy = doc.y + gapSec + 4;
+  doc.font(R).fontSize(bodyFs).fillColor('#000000');
+  const greeting = quote.clientName ? s.greetingNamed(quote.clientName) : s.greetingGeneric;
+  doc.text(greeting, ML, cy, { width: CONTENT_W, lineGap: 2 });
+  cy = doc.y + gapLine;
+  doc.text(s.intro, ML, cy, { width: CONTENT_W, lineGap: 2 });
+  cy = doc.y + Math.max(gapLine - 2, 2);
+  doc.text(s.introOffer, ML, cy, { width: CONTENT_W, lineGap: 2 });
 
   // =====================================================================
   //  ITEMS TABLE
   // =====================================================================
-  cy = doc.y + 18;
+  cy = doc.y + gapSec;
 
-  // Column layout (absolute offsets from ML)
   const C_POS   = 0;
-  const C_NAME  = 32;
-  const C_QTY   = 220;
-  const C_UNIT  = 300;
-  const C_TOTAL = 400;
+  const C_NAME  = 30;
+  const C_QTY   = 215;
+  const C_UNIT  = 295;
+  const C_TOTAL = 395;
   const TBL_W   = CONTENT_W;
-
-  const ROW_H  = 22;
-  const HDR_H  = 26;
-  const PAD    = 6;
 
   // -- Header row --
   const hdrY = cy;
-  doc.save();
-  doc.rect(ML, hdrY, TBL_W, HDR_H).fill('#e8e8e8');
-  doc.restore();
-  doc.fillColor('#1a1a1a').font(B).fontSize(9);
-
-  const hdrTextY = hdrY + (HDR_H - 9) / 2;
+  doc.save(); doc.rect(ML, hdrY, TBL_W, hdrH).fill('#e8e8e8'); doc.restore();
+  doc.fillColor('#1a1a1a').font(B).fontSize(tblFs);
+  const hdrTextY = hdrY + (hdrH - tblFs) / 2;
   doc.text(s.colPos,         ML + C_POS  + PAD, hdrTextY);
   doc.text(s.colDescription, ML + C_NAME + PAD, hdrTextY, { width: C_QTY - C_NAME - PAD * 2 });
   doc.text(s.colQuantity,    ML + C_QTY  + PAD, hdrTextY);
   textRight(doc, s.colUnitPrice, ML + C_UNIT + PAD, hdrTextY, C_TOTAL - C_UNIT - PAD * 2);
   textRight(doc, s.colTotal,     ML + C_TOTAL + PAD, hdrTextY, TBL_W - C_TOTAL - PAD * 2);
-
-  cy = hdrY + HDR_H;
+  cy = hdrY + hdrH;
 
   // -- Item rows --
-  doc.font(R).fontSize(9);
-  for (let i = 0; i < quote.items.length; i++) {
+  doc.font(R).fontSize(tblFs);
+  for (let i = 0; i < nItems; i++) {
     const item = quote.items[i];
     const baseName = getBaseNameFromItemName(item.itemName);
     const unit = getUnitFromItemName(item.itemName);
     const qtyStr = unit ? `${item.quantity} ${unit}` : String(item.quantity);
 
-    // Alternating stripe
     if (i % 2 === 0) {
-      doc.save();
-      doc.rect(ML, cy, TBL_W, ROW_H).fill('#f7f7f7');
-      doc.restore();
+      doc.save(); doc.rect(ML, cy, TBL_W, rowH).fill('#f7f7f7'); doc.restore();
     }
     doc.fillColor('#1a1a1a');
-
-    const rowTextY = cy + (ROW_H - 9) / 2;
-    doc.text(String(i + 1), ML + C_POS + PAD, rowTextY);
-    doc.text(baseName, ML + C_NAME + PAD, rowTextY, { width: C_QTY - C_NAME - PAD * 2 });
-    doc.text(qtyStr, ML + C_QTY + PAD, rowTextY);
+    const rowTextY = cy + (rowH - tblFs) / 2;
+    doc.text(String(i + 1),  ML + C_POS  + PAD, rowTextY);
+    doc.text(baseName,       ML + C_NAME + PAD, rowTextY, { width: C_QTY - C_NAME - PAD * 2 });
+    doc.text(qtyStr,         ML + C_QTY  + PAD, rowTextY);
     textRight(doc, fmtMoney(item.price, cur), ML + C_UNIT + PAD, rowTextY, C_TOTAL - C_UNIT - PAD * 2);
     textRight(doc, fmtMoney(item.total, cur), ML + C_TOTAL + PAD, rowTextY, TBL_W - C_TOTAL - PAD * 2);
-
-    cy += ROW_H;
+    cy += rowH;
   }
 
-  // Bottom border of table
   doc.moveTo(ML, cy).lineTo(ML + TBL_W, cy).lineWidth(0.5).strokeColor('#cccccc').stroke();
 
   // -- Totals --
-  cy += 12;
+  cy += gapLine + 2;
   const totLabelX = ML + C_QTY + PAD;
   const totValueX = ML + C_TOTAL + PAD;
   const totValueW = TBL_W - C_TOTAL - PAD * 2;
 
-  doc.font(R).fontSize(BODY).fillColor('#333333');
+  doc.font(R).fontSize(bodyFs).fillColor('#333333');
   doc.text(s.subtotal, totLabelX, cy);
   textRight(doc, fmtMoney(quote.subtotal, cur), totValueX, cy, totValueW);
-  cy += 18;
+  cy += bodyFs + gapLine;
 
   const vatPct = (quote.vatRate * 100).toFixed(0);
   doc.text(s.vatLabel(vatPct), totLabelX, cy);
   textRight(doc, fmtMoney(quote.vat, cur), totValueX, cy, totValueW);
-  cy += 20;
+  cy += bodyFs + gapLine + 2;
 
-  doc.moveTo(totLabelX, cy - 6).lineTo(ML + TBL_W, cy - 6).lineWidth(0.5).strokeColor('#cccccc').stroke();
-
-  doc.font(B).fontSize(11).fillColor('#000000');
+  doc.moveTo(totLabelX, cy - 4).lineTo(ML + TBL_W, cy - 4).lineWidth(0.5).strokeColor('#cccccc').stroke();
+  doc.font(B).fontSize(bodyFs + 1).fillColor('#000000');
   doc.text(s.grandTotal, totLabelX, cy);
   textRight(doc, fmtMoney(quote.total, cur), totValueX, cy, totValueW);
 
   // =====================================================================
   //  CLOSING TEXT
   // =====================================================================
-  cy = doc.y + 30;
-  doc.font(R).fontSize(BODY).fillColor('#000000');
-  doc.text(s.closingInterest, ML, cy, { width: CONTENT_W, lineGap: 3 });
-
-  cy = doc.y + 8;
-  doc.text(s.closingContact(user.phone ?? ''), ML, cy, { width: CONTENT_W, lineGap: 3 });
-
-  cy = doc.y + 14;
-  doc.text(s.closingDelivery(options.quoteDate), ML, cy, { width: CONTENT_W, lineGap: 3 });
-  cy = doc.y + 4;
-  doc.text(s.closingValid(options.validUntil), ML, cy, { width: CONTENT_W, lineGap: 3 });
+  cy = doc.y + gapSec + 6;
+  doc.font(R).fontSize(bodyFs).fillColor('#000000');
+  doc.text(s.closingInterest, ML, cy, { width: CONTENT_W, lineGap: 2 });
+  cy = doc.y + gapLine;
+  doc.text(s.closingContact(user.phone ?? ''), ML, cy, { width: CONTENT_W, lineGap: 2 });
+  cy = doc.y + gapLine + 2;
+  doc.text(s.closingDelivery(options.quoteDate), ML, cy, { width: CONTENT_W, lineGap: 2 });
+  cy = doc.y + Math.max(gapLine - 2, 2);
+  doc.text(s.closingValid(options.validUntil), ML, cy, { width: CONTENT_W, lineGap: 2 });
 
   // =====================================================================
   //  SIGNATURE
   // =====================================================================
-  cy = doc.y + 26;
-  doc.font(R).fontSize(BODY);
+  cy = doc.y + gapSec;
+  doc.font(R).fontSize(bodyFs);
   doc.text(s.regards, ML, cy);
-  cy = doc.y + 36;
-  doc.moveTo(ML, cy).lineTo(ML + 180, cy).lineWidth(0.5).strokeColor('#999999').stroke();
-  cy += 6;
-  doc.font(B).fontSize(BODY);
+  cy = doc.y + gapSec + 4;
+  doc.moveTo(ML, cy).lineTo(ML + 160, cy).lineWidth(0.5).strokeColor('#999999').stroke();
+  cy += 5;
+  doc.font(B).fontSize(bodyFs);
   doc.text(user.name ?? '', ML, cy);
 
   // =====================================================================
-  //  FOOTER  (bank details, tax info — pinned to bottom)
+  //  FOOTER  (company · bank · tax — pinned to bottom, 3 columns)
   // =====================================================================
-  const footerTop = 755;
-  doc.moveTo(ML, footerTop).lineTo(PAGE_W - MR, footerTop).lineWidth(0.5).strokeColor('#cccccc').stroke();
+  doc.moveTo(ML, FOOTER_TOP).lineTo(PAGE_W - MR, FOOTER_TOP).lineWidth(0.5).strokeColor('#bbbbbb').stroke();
 
   const fSize = 7.5;
-  const fLineGap = 2;
+  const fLG = 2;
+  const fGutter = 15;
+  const fColW = Math.floor((CONTENT_W - fGutter * 2) / 3);
   const fCol1 = ML;
-  const fCol2 = ML + 125;
-  const fCol3 = ML + 255;
-  const fCol4 = ML + 385;
-  const fColW = 120;
-  let fy1 = footerTop + 8;
+  const fCol2 = ML + fColW + fGutter;
+  const fCol3 = fCol2 + fColW + fGutter;
+  const fTop = FOOTER_TOP + 8;
 
-  // Col 1 — company
   doc.font(B).fontSize(fSize).fillColor('#333333');
-  doc.text(user.companyName ?? '', fCol1, fy1, { width: fColW, lineGap: fLineGap });
-  doc.font(R).fontSize(fSize).fillColor('#555555');
-  if (user.name) doc.text(`${s.owner} ${user.name}`, fCol1, doc.y, { width: fColW, lineGap: fLineGap });
-  if (user.companyAddress) doc.text(user.companyAddress, fCol1, doc.y, { width: fColW, lineGap: fLineGap });
+  doc.text(user.companyName ?? '', fCol1, fTop, { width: fColW, lineGap: fLG });
+  doc.font(R).fillColor('#555555');
+  if (user.name)           doc.text(`${s.owner} ${user.name}`, { width: fColW, lineGap: fLG });
+  if (user.companyAddress) doc.text(user.companyAddress, { width: fColW, lineGap: fLG });
 
-  // Col 2 — bank
-  doc.font(R).fontSize(fSize).fillColor('#555555');
-  let fy2 = fy1;
-  if (user.bankName)   { doc.text(user.bankName, fCol2, fy2, { width: fColW, lineGap: fLineGap }); fy2 = doc.y; }
-  if (user.blz)        { doc.text(`BLZ: ${user.blz}`, fCol2, fy2, { width: fColW, lineGap: fLineGap }); fy2 = doc.y; }
-  if (user.kto)        { doc.text(`KTO: ${user.kto}`, fCol2, fy2, { width: fColW, lineGap: fLineGap }); }
+  doc.font(B).fontSize(fSize).fillColor('#333333');
+  doc.text(user.bankName ?? '', fCol2, fTop, { width: fColW, lineGap: fLG });
+  doc.font(R).fillColor('#555555');
+  if (user.blz)  doc.text(`BLZ: ${user.blz}`,   fCol2, doc.y, { width: fColW, lineGap: fLG });
+  if (user.kto)  doc.text(`KTO: ${user.kto}`,   fCol2, doc.y, { width: fColW, lineGap: fLG });
+  if (user.iban) doc.text(`IBAN: ${user.iban}`,  fCol2, doc.y, { width: fColW, lineGap: fLG });
+  if (user.bic)  doc.text(`BIC: ${user.bic}`,   fCol2, doc.y, { width: fColW, lineGap: fLG });
 
-  // Col 3 — IBAN / BIC
-  let fy3 = fy1;
-  if (user.iban)       { doc.text(`IBAN: ${user.iban}`, fCol3, fy3, { width: fColW, lineGap: fLineGap }); fy3 = doc.y; }
-  if (user.bic)        { doc.text(`BIC: ${user.bic}`, fCol3, fy3, { width: fColW, lineGap: fLineGap }); }
-
-  // Col 4 — tax
-  let fy4 = fy1;
-  if (user.taxNumber)     { doc.text(`${s.taxId}: ${user.taxNumber}`, fCol4, fy4, { width: fColW, lineGap: fLineGap }); fy4 = doc.y; }
-  if (user.taxOfficeName) { doc.text(`${s.taxOffice}: ${user.taxOfficeName}`, fCol4, fy4, { width: fColW, lineGap: fLineGap }); }
+  doc.font(B).fontSize(fSize).fillColor('#333333');
+  doc.text(s.taxId, fCol3, fTop, { width: fColW, lineGap: fLG });
+  doc.font(R).fillColor('#555555');
+  if (user.taxNumber)     doc.text(user.taxNumber, fCol3, doc.y, { width: fColW, lineGap: fLG });
+  if (user.taxOfficeName) {
+    doc.y += 3;
+    doc.font(B).fillColor('#333333').text(s.taxOffice, fCol3, doc.y, { width: fColW, lineGap: fLG });
+    doc.font(R).fillColor('#555555').text(user.taxOfficeName, fCol3, doc.y, { width: fColW, lineGap: fLG });
+  }
 
   doc.end();
   return doc;
