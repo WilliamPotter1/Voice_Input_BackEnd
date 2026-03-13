@@ -47,7 +47,7 @@ export async function profileRoutes(app: FastifyInstance, _opts: FastifyPluginOp
       if (!user) return { error: 'User not found' };
 
       const avatarUrl = user.avatarPath
-        ? `/api/profile/avatar/${path.basename(user.avatarPath)}`
+        ? `/api/api/profile/avatar/${path.basename(user.avatarPath)}`
         : null;
 
       return {
@@ -99,7 +99,7 @@ export async function profileRoutes(app: FastifyInstance, _opts: FastifyPluginOp
       });
 
       const avatarUrl = user.avatarPath
-        ? `/api/profile/avatar/${path.basename(user.avatarPath)}`
+        ? `/api/api/profile/avatar/${path.basename(user.avatarPath)}`
         : null;
 
       return {
@@ -143,17 +143,17 @@ export async function profileRoutes(app: FastifyInstance, _opts: FastifyPluginOp
       const buffer = await data.toBuffer();
       await fsp.writeFile(filePath, buffer);
 
-      const oldUser = await prisma.user.findUnique({
+      const oldUser = (await prisma.user.findUnique({
         where: { id: request.userId! },
-        select: { avatarPath: true },
-      });
+        select: { avatarPath: true } as any,
+      })) as any;
       if (oldUser?.avatarPath) {
         await fsp.unlink(oldUser.avatarPath).catch(() => {});
       }
 
       await prisma.user.update({
         where: { id: request.userId! },
-        data: { avatarPath: filePath },
+        data: { avatarPath: filePath } as any,
       });
 
       return { avatarUrl: `/api/profile/avatar/${filename}` };
