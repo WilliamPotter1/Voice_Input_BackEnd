@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../lib/db.js';
 import { createQuoteBodySchema, updateQuoteBodySchema } from '../schemas/quotes.js';
+import { generateQuotePdf } from '../services/generate-quote-pdf.js';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -364,6 +365,84 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       await prisma.quote.delete({ where: { id } });
       return reply.status(204).send();
     }
+  );
+
+  // PDF export
+  app.get(
+    '/quotes/:id/pdf',
+    {
+      preHandler: requireAuth,
+      schema: {
+        params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+        querystring: {
+          type: 'object',
+          properties: {
+            quoteDate: { type: 'string' },
+            validUntil: { type: 'string' },
+            lang: { type: 'string' },
+          },
+          required: ['quoteDate', 'validUntil'],
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.userId!;
+      const { id } = request.params as { id: string };
+      const { quoteDate, validUntil, lang } = request.query as { quoteDate: string; validUntil: string; lang?: string };
+
+      const [quote, user] = await Promise.all([
+        prisma.quote.findFirst({ where: { id, userId }, include: { items: true } }),
+        prisma.user.findUnique({ where: { id: userId } }),
+      ]);
+      if (!quote) return reply.status(404).send({ error: 'Quote not found' });
+      if (!user) return reply.status(404).send({ error: 'User not found' });
+
+      const quoteNumber = quote.id.slice(0, 8).toUpperCase();
+
+      const pdfDoc = generateQuotePdf(
+        {
+          id: quote.id,
+          clientName: quote.clientName,
+          customerAddress: (quote as any).customerAddress ?? null,
+          currency: (quote as any).currency ?? 'EUR',
+          vatRate: quote.vatRate,
+          subtotal: quote.subtotal,
+          vat: quote.vat,
+          total: quote.total,
+          items: quote.items.map((i: any) => ({
+            itemName: i.itemName,
+            quantity: i.quantity,
+            price: i.price,
+            total: i.total,
+          })),
+        },
+        {
+          name: (user as any).name ?? null,
+          phone: (user as any).phone ?? null,
+          email: user.email,
+          companyName: (user as any).companyName ?? null,
+          companyAddress: (user as any).companyAddress ?? null,
+          websiteUrl: (user as any).websiteUrl ?? null,
+          bankName: (user as any).bankName ?? null,
+          blz: (user as any).blz ?? null,
+          kto: (user as any).kto ?? null,
+          iban: (user as any).iban ?? null,
+          bic: (user as any).bic ?? null,
+          taxNumber: (user as any).taxNumber ?? null,
+          taxOfficeName: (user as any).taxOfficeName ?? null,
+        },
+        { quoteDate, validUntil, quoteNumber, lang: lang ?? 'de' },
+      );
+
+      const titleMap: Record<string, string> = { de: 'Angebot', en: 'Quotation', it: 'Preventivo', fr: 'Devis', es: 'Presupuesto' };
+      const pdfTitle = titleMap[lang ?? 'de'] ?? titleMap.en;
+      const clientLabel = quote.clientName?.replace(/[^a-zA-Z0-9]/g, '_') ?? pdfTitle;
+      reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', `inline; filename="${pdfTitle}-${clientLabel}-${quoteNumber}.pdf"`);
+
+      return reply.send(pdfDoc);
+    },
   );
 
   // Attachments
