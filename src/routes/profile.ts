@@ -156,7 +156,7 @@ export async function profileRoutes(app: FastifyInstance, _opts: FastifyPluginOp
         data: { avatarPath: filePath } as any,
       });
 
-      return { avatarUrl: `/api/profile/avatar/${filename}` };
+      return { avatarUrl: `/api/api/profile/avatar/${filename}` };
     },
   );
 
