@@ -7,6 +7,11 @@ interface PdfQuoteItem {
   total: number;
 }
 
+interface PdfAttachment {
+  filename: string;
+  url: string;
+}
+
 interface PdfQuote {
   id: string;
   clientName: string | null;
@@ -17,6 +22,7 @@ interface PdfQuote {
   vat: number;
   total: number;
   items: PdfQuoteItem[];
+  attachments: PdfAttachment[];
 }
 
 interface PdfUser {
@@ -65,6 +71,7 @@ interface PdfStrings {
   closingContact: (phone: string) => string;
   closingDelivery: (date: string) => string;
   closingValid: (date: string) => string;
+  attachmentsLabel: string;
   regards: string;
   owner: string;
   taxId: string;
@@ -92,6 +99,7 @@ const pdfStrings: Record<string, PdfStrings> = {
     closingContact: (ph) => `Zögern Sie bitte nicht, uns bei Fragen zu kontaktieren. Sie erreichen uns jederzeit unter der Telefonnummer: ${ph}.`,
     closingDelivery: (d) => `Wenn Sie unser Angebot noch in dieser Woche erteilen, dann können wir bis zum ${d} ausführen.`,
     closingValid: (d) => `Dieses Angebot ist gültig bis zum ${d}.`,
+    attachmentsLabel: 'Anhänge',
     regards: 'Mit freundlichen Grüßen',
     owner: 'Inh.',
     taxId: 'Steuer-Nr. / USt-Id.',
@@ -117,6 +125,7 @@ const pdfStrings: Record<string, PdfStrings> = {
     closingContact: (ph) => `Please do not hesitate to contact us with any questions. You can reach us at: ${ph}.`,
     closingDelivery: (d) => `If you accept this week, we can deliver by ${d}.`,
     closingValid: (d) => `This quotation is valid until ${d}.`,
+    attachmentsLabel: 'Attachments',
     regards: 'Kind regards',
     owner: 'Owner',
     taxId: 'Tax No. / VAT ID',
@@ -142,6 +151,7 @@ const pdfStrings: Record<string, PdfStrings> = {
     closingContact: (ph) => `Non esiti a contattarci per qualsiasi domanda. Può raggiungerci al numero: ${ph}.`,
     closingDelivery: (d) => `Se accetta entro questa settimana, possiamo completare entro il ${d}.`,
     closingValid: (d) => `Questo preventivo è valido fino al ${d}.`,
+    attachmentsLabel: 'Allegati',
     regards: 'Cordiali saluti',
     owner: 'Titolare',
     taxId: 'P.IVA / Cod. Fiscale',
@@ -167,6 +177,7 @@ const pdfStrings: Record<string, PdfStrings> = {
     closingContact: (ph) => `N'hésitez pas à nous contacter pour toute question. Vous pouvez nous joindre au : ${ph}.`,
     closingDelivery: (d) => `Si vous acceptez cette semaine, nous pouvons livrer avant le ${d}.`,
     closingValid: (d) => `Ce devis est valable jusqu'au ${d}.`,
+    attachmentsLabel: 'Pièces jointes',
     regards: 'Cordialement',
     owner: 'Gérant',
     taxId: 'N° SIRET / TVA',
@@ -192,6 +203,7 @@ const pdfStrings: Record<string, PdfStrings> = {
     closingContact: (ph) => `No dude en contactarnos si tiene alguna pregunta. Puede comunicarse con nosotros al: ${ph}.`,
     closingDelivery: (d) => `Si acepta esta semana, podemos entregar antes del ${d}.`,
     closingValid: (d) => `Este presupuesto es válido hasta el ${d}.`,
+    attachmentsLabel: 'Adjuntos',
     regards: 'Atentamente',
     owner: 'Propietario',
     taxId: 'NIF / CIF',
@@ -278,11 +290,9 @@ export function generateQuotePdf(
   // ---------------------------------------------------------------
   // Adaptive sizing: scale gaps & row heights so content fits
   // ---------------------------------------------------------------
-  // Fixed vertical budget consumed by non-table content (~410pt at "normal").
-  // Available for table rows = FOOTER_TOP - headerEnd - fixedBody.
-  // We compute headerEnd after drawing it, then adjust row height.
-  const HEADER_END   = 185;   // approximate Y after header+title
-  const FIXED_BODY   = 260;   // greeting+intro+totals+closing+signature
+  const nAttach = quote.attachments.length;
+  const HEADER_END   = 185;
+  const FIXED_BODY   = 260 + (nAttach > 0 ? 20 + nAttach * 14 : 0);
   const availForRows = FOOTER_TOP - HEADER_END - FIXED_BODY;
   const idealRowH    = 22;
   const neededRows   = idealRowH * nItems + 26; // 26 for header
@@ -431,6 +441,27 @@ export function generateQuotePdf(
   doc.text(s.closingDelivery(options.quoteDate), ML, cy, { width: CONTENT_W, lineGap: 2 });
   cy = doc.y + Math.max(gapLine - 2, 2);
   doc.text(s.closingValid(options.validUntil), ML, cy, { width: CONTENT_W, lineGap: 2 });
+
+  // =====================================================================
+  //  ATTACHMENTS  (listed by filename with download link)
+  // =====================================================================
+  if (nAttach > 0) {
+    cy = doc.y + gapSec;
+    doc.font(B).fontSize(bodyFs).fillColor('#1a1a1a');
+    doc.text(s.attachmentsLabel, ML, cy);
+    cy = doc.y + 4;
+    doc.font(R).fontSize(bodyFs - 1);
+    for (const att of quote.attachments) {
+      doc.fillColor('#2563eb')
+        .text(`• ${att.filename}`, ML + 6, cy, {
+          width: CONTENT_W - 6,
+          link: att.url,
+          underline: true,
+        });
+      cy = doc.y + 2;
+    }
+    doc.fillColor('#000000');
+  }
 
   // =====================================================================
   //  SIGNATURE

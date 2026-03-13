@@ -390,14 +390,16 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       const { id } = request.params as { id: string };
       const { quoteDate, validUntil, lang } = request.query as { quoteDate: string; validUntil: string; lang?: string };
 
-      const [quote, user] = await Promise.all([
+      const [quote, user, attachments] = await Promise.all([
         prisma.quote.findFirst({ where: { id, userId }, include: { items: true } }),
         prisma.user.findUnique({ where: { id: userId } }),
+        (prisma as any).quoteAttachment.findMany({ where: { quoteId: id }, orderBy: { createdAt: 'asc' } }),
       ]);
       if (!quote) return reply.status(404).send({ error: 'Quote not found' });
       if (!user) return reply.status(404).send({ error: 'User not found' });
 
       const quoteNumber = quote.id.slice(0, 8).toUpperCase();
+      const baseUrl = `${request.protocol}://${request.hostname}`;
 
       const pdfDoc = generateQuotePdf(
         {
@@ -414,6 +416,10 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             quantity: i.quantity,
             price: i.price,
             total: i.total,
+          })),
+          attachments: (attachments as any[]).map((a: any) => ({
+            filename: a.filename,
+            url: `${baseUrl}/api/quotes/${id}/attachments/${a.id}/download`,
           })),
         },
         {
