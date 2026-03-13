@@ -10,10 +10,24 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  createdAt DateTime @default(now()) @map("created_at")
+  id             String   @id @default(uuid())
+  email          String   @unique
+  password       String
+  name           String?
+  phone          String?
+  taxRate        Float?   @map("tax_rate")
+  websiteUrl     String?  @map("website_url")
+  companyName    String?  @map("company_name")
+  companyAddress String?  @map("company_address")
+  bankName       String?  @map("bank_name")
+  blz            String?
+  kto            String?
+  iban           String?
+  bic            String?
+  taxNumber      String?  @map("tax_number")
+  taxOfficeName  String?  @map("tax_office_name")
+  avatarPath     String?  @map("avatar_path")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   quotes Quote[]
 

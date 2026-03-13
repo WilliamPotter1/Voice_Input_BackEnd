@@ -7,6 +7,7 @@ import { speechToTextRoutes } from './routes/speech-to-text.js';
 import { authRoutes } from './routes/auth.js';
 import { extractQuoteItemsRoutes } from './routes/extract-quote-items.js';
 import { quotesRoutes } from './routes/quotes.js';
+import { profileRoutes } from './routes/profile.js';
 import { authPlugin } from './plugins/auth.js';
 
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
@@ -107,6 +108,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(authRoutes, { prefix: '/api' });
   await app.register(speechToTextRoutes, { prefix: '/api' });
   await app.register(extractQuoteItemsRoutes, { prefix: '/api' });
+  await app.register(profileRoutes, { prefix: '/api' });
   await app.register(quotesRoutes, { prefix: '/api' });
 
   return app;
