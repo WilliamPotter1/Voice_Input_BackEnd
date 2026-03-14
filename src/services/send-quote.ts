@@ -72,6 +72,9 @@ export async function sendQuoteWhatsapp(opts: WhatsappOptions): Promise<void> {
     params.append('MediaUrl', m);
   }
 
+  console.log('[WhatsApp] Sending to:', opts.to);
+  console.log('[WhatsApp] MediaUrls:', opts.mediaUrls);
+
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -81,9 +84,21 @@ export async function sendQuoteWhatsapp(opts: WhatsappOptions): Promise<void> {
     body: params.toString(),
   });
 
+  const responseBody = await res.text().catch(() => '');
+  console.log('[WhatsApp] Twilio response status:', res.status);
+  console.log('[WhatsApp] Twilio response body:', responseBody);
+
   if (!res.ok) {
-    const txt = await res.text().catch(() => res.statusText);
-    throw new Error(`Failed to send WhatsApp message: ${res.status} ${txt}`);
+    throw new Error(`Failed to send WhatsApp message: ${res.status} ${responseBody}`);
+  }
+
+  try {
+    const json = JSON.parse(responseBody);
+    if (json.status === 'failed' || json.status === 'undelivered') {
+      throw new Error(`WhatsApp message ${json.status}: ${json.error_message ?? 'unknown error'}`);
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith('WhatsApp message')) throw e;
   }
 }
 
