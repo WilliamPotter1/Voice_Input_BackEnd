@@ -581,7 +581,10 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             lang,
             createdAt: Date.now(),
           });
-          const baseUrl = `${request.protocol}://${request.hostname}`;
+          const publicUrl = process.env.PUBLIC_URL;
+          const baseUrl = publicUrl
+            ? publicUrl.replace(/\/+$/, '')
+            : `https://${request.hostname}`;
           const mediaUrls = [
             `${baseUrl}/api/quotes/send/${sendToken}/pdf`,
             ...((attachments as any[]).map(
