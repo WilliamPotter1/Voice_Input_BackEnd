@@ -11,7 +11,7 @@ import { sendQuoteEmail, sendQuoteWhatsapp } from '../services/send-quote.js';
 const SEND_TOKEN_TTL_MS = 15 * 60 * 1000;
 const sendTokenStore = new Map<
   string,
-  { quoteId: string; userId: string; quoteDate: string; validUntil: string; lang: string; createdAt: number }
+  { quoteId: string; userId: string; quoteDate: string; validUntil: string; lang: string; quoteNumber: number; createdAt: number }
 >();
 
 function getSendTokenPayload(token: string) {
@@ -398,15 +398,20 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             quoteDate: { type: 'string' },
             validUntil: { type: 'string' },
             lang: { type: 'string' },
+            quoteNumber: { type: 'integer' },
           },
-          required: ['quoteDate', 'validUntil'],
+          required: ['quoteDate', 'validUntil', 'quoteNumber'],
         },
       },
     },
     async (request, reply) => {
       const userId = request.userId!;
       const { id } = request.params as { id: string };
-      const { quoteDate, validUntil, lang } = request.query as { quoteDate: string; validUntil: string; lang?: string };
+      const q = request.query as { quoteDate: string; validUntil: string; lang?: string; quoteNumber?: number };
+      const quoteNumberParam = q.quoteNumber != null ? Number(q.quoteNumber) : NaN;
+      if (!Number.isInteger(quoteNumberParam) || quoteNumberParam < 1 || quoteNumberParam > 99) {
+        return reply.status(400).send({ error: 'quoteNumber is required and must be between 1 and 99' });
+      }
 
       const [quote, user, attachments] = await Promise.all([
         prisma.quote.findFirst({ where: { id, userId }, include: { items: true } }),
@@ -416,7 +421,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       if (!quote) return reply.status(404).send({ error: 'Quote not found' });
       if (!user) return reply.status(404).send({ error: 'User not found' });
 
-      const quoteNumber = quote.id.slice(0, 8).toUpperCase();
+      const quoteNumber = String(quoteNumberParam);
       const baseUrl = `${request.protocol}://${request.hostname}`;
 
       const pdfDoc = generateQuotePdf(
@@ -455,11 +460,11 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           taxNumber: (user as any).taxNumber ?? null,
           taxOfficeName: (user as any).taxOfficeName ?? null,
         },
-        { quoteDate, validUntil, quoteNumber, lang: lang ?? 'de' },
+        { quoteDate: q.quoteDate, validUntil: q.validUntil, quoteNumber, lang: q.lang ?? 'de' },
       );
 
       const titleMap: Record<string, string> = { de: 'Angebot', en: 'Quotation', it: 'Preventivo', fr: 'Devis', es: 'Presupuesto' };
-      const pdfTitle = titleMap[lang ?? 'de'] ?? titleMap.en;
+      const pdfTitle = titleMap[q.lang ?? 'de'] ?? titleMap.en;
       const clientLabel = quote.clientName?.replace(/[^a-zA-Z0-9]/g, '_') ?? pdfTitle;
       reply
         .header('Content-Type', 'application/pdf')
@@ -483,6 +488,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             recipient: { type: 'string' },
             quoteDate: { type: 'string' },
             validUntil: { type: 'string' },
+            quoteNumber: { type: 'integer' },
           },
           required: ['channel', 'recipient', 'quoteDate', 'validUntil'],
         },
@@ -491,12 +497,18 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
     async (request, reply) => {
       const userId = request.userId!;
       const { id } = request.params as { id: string };
-      const { channel, recipient, quoteDate, validUntil } = request.body as {
+      const body = request.body as {
         channel: 'email' | 'whatsapp';
         recipient: string;
         quoteDate: string;
         validUntil: string;
+        quoteNumber?: number;
       };
+      const { channel, recipient, quoteDate, validUntil } = body;
+      const quoteNumberParam = body.quoteNumber != null ? Number(body.quoteNumber) : NaN;
+      if (!Number.isInteger(quoteNumberParam) || quoteNumberParam < 1 || quoteNumberParam > 99) {
+        return reply.status(400).send({ error: 'quoteNumber is required and must be between 1 and 99' });
+      }
 
       const [quote, user, attachments] = await Promise.all([
         prisma.quote.findFirst({ where: { id, userId }, include: { items: true } }),
@@ -506,7 +518,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       if (!quote) return reply.status(404).send({ error: 'Quote not found' });
       if (!user) return reply.status(404).send({ error: 'User not found' });
 
-      const quoteNumber = quote.id.slice(0, 8).toUpperCase();
+      const quoteNumber = String(quoteNumberParam);
       const lang = 'de';
 
       // Generate PDF into buffer
@@ -579,6 +591,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             quoteDate,
             validUntil,
             lang,
+            quoteNumber: quoteNumberParam,
             createdAt: Date.now(),
           });
           const publicUrl = process.env.PUBLIC_URL;
@@ -621,7 +634,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       ]);
       if (!quote || !user) return reply.status(404).send({ error: 'Quote not found' });
 
-      const quoteNumber = quote.id.slice(0, 8).toUpperCase();
+      const quoteNumber = String(payload.quoteNumber != null && payload.quoteNumber >= 1 ? payload.quoteNumber : 1);
       const pdfDoc = generateQuotePdf(
         {
           id: quote.id,
