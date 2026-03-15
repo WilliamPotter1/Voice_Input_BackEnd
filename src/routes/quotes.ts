@@ -409,8 +409,8 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       const { id } = request.params as { id: string };
       const q = request.query as { quoteDate: string; validUntil: string; lang?: string; quoteNumber?: number };
       const quoteNumberParam = q.quoteNumber != null ? Number(q.quoteNumber) : NaN;
-      if (!Number.isInteger(quoteNumberParam) || quoteNumberParam < 1 || quoteNumberParam > 99) {
-        return reply.status(400).send({ error: 'quoteNumber is required and must be between 1 and 99' });
+      if (!Number.isInteger(quoteNumberParam) || quoteNumberParam < 1) {
+        return reply.status(400).send({ error: 'quoteNumber is required and must be a positive integer' });
       }
 
       const [quote, user, attachments] = await Promise.all([
@@ -506,8 +506,8 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       };
       const { channel, recipient, quoteDate, validUntil } = body;
       const quoteNumberParam = body.quoteNumber != null ? Number(body.quoteNumber) : NaN;
-      if (!Number.isInteger(quoteNumberParam) || quoteNumberParam < 1 || quoteNumberParam > 99) {
-        return reply.status(400).send({ error: 'quoteNumber is required and must be between 1 and 99' });
+      if (!Number.isInteger(quoteNumberParam) || quoteNumberParam < 1) {
+        return reply.status(400).send({ error: 'quoteNumber is required and must be a positive integer' });
       }
 
       const [quote, user, attachments] = await Promise.all([
