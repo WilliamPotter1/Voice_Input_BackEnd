@@ -474,6 +474,64 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
     },
   );
 
+  // Get temporary public links for quote PDF and attachments (for pre-filling email body)
+  app.get(
+    '/quotes/:id/send-links',
+    {
+      preHandler: requireAuth,
+      schema: {
+        params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+        querystring: {
+          type: 'object',
+          properties: {
+            quoteDate: { type: 'string' },
+            validUntil: { type: 'string' },
+            quoteNumber: { type: 'integer' },
+            lang: { type: 'string' },
+          },
+          required: ['quoteDate', 'validUntil', 'quoteNumber'],
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.userId!;
+      const { id } = request.params as { id: string };
+      const q = request.query as { quoteDate: string; validUntil: string; quoteNumber: number; lang?: string };
+      const quoteNumberParam = Number(q.quoteNumber);
+      if (!Number.isInteger(quoteNumberParam) || quoteNumberParam < 1) {
+        return reply.status(400).send({ error: 'quoteNumber must be a positive integer' });
+      }
+
+      const [quote, attachments] = await Promise.all([
+        prisma.quote.findFirst({ where: { id, userId } }),
+        (prisma as any).quoteAttachment.findMany({ where: { quoteId: id }, orderBy: { createdAt: 'asc' } }),
+      ]);
+      if (!quote) return reply.status(404).send({ error: 'Quote not found' });
+
+      const baseUrl = process.env.PUBLIC_URL
+        ? process.env.PUBLIC_URL.replace(/\/+$/, '')
+        : `https://${request.hostname}`;
+      const sendToken = crypto.randomBytes(24).toString('hex');
+      sendTokenStore.set(sendToken, {
+        quoteId: id,
+        userId,
+        quoteDate: q.quoteDate,
+        validUntil: q.validUntil,
+        lang: q.lang ?? 'de',
+        quoteNumber: quoteNumberParam,
+        createdAt: Date.now(),
+      });
+
+      const pdfUrl = `${baseUrl}/api/quotes/send/${sendToken}/pdf`;
+      const attachmentUrls = (attachments as any[]).map((a: any) => ({
+        filename: a.filename,
+        url: `${baseUrl}/api/quotes/send/${sendToken}/attachments/${a.id}/download`,
+      }));
+
+      return reply.send({ pdfUrl, attachmentUrls });
+    },
+  );
+
   // Send quote via email or WhatsApp
   app.post(
     '/quotes/:id/send',
