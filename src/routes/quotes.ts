@@ -522,10 +522,10 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         createdAt: Date.now(),
       });
 
-      const pdfUrl = `${baseUrl}/api/quotes/send/${sendToken}/pdf`;
+      const pdfUrl = `${baseUrl}/api/api/quotes/send/${sendToken}/pdf`;
       const attachmentUrls = (attachments as any[]).map((a: any) => ({
         filename: a.filename,
-        url: `${baseUrl}/api/quotes/send/${sendToken}/attachments/${a.id}/download`,
+        url: `${baseUrl}/api/api/quotes/send/${sendToken}/attachments/${a.id}/download`,
       }));
 
       return reply.send({ pdfUrl, attachmentUrls });
