@@ -726,7 +726,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       const clientLabel = quote.clientName?.replace(/[^a-zA-Z0-9]/g, '_') ?? 'Angebot';
       reply
         .header('Content-Type', 'application/pdf')
-        .header('Content-Disposition', `attachment; filename="Angebot-${clientLabel}-${quoteNumber}.pdf"`);
+        .header('Content-Disposition', `inline; filename="Angebot-${clientLabel}-${quoteNumber}.pdf"`);
       return reply.send(pdfDoc);
     },
   );
