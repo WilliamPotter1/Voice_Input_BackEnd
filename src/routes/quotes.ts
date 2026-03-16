@@ -6,23 +6,7 @@ import path from 'node:path';
 import { prisma } from '../lib/db.js';
 import { createQuoteBodySchema, updateQuoteBodySchema } from '../schemas/quotes.js';
 import { generateQuotePdf } from '../services/generate-quote-pdf.js';
-import { sendQuoteEmail, sendQuoteWhatsapp } from '../services/send-quote.js';
-
-const SEND_TOKEN_TTL_MS = 15 * 60 * 1000;
-const sendTokenStore = new Map<
-  string,
-  { quoteId: string; userId: string; quoteDate: string; validUntil: string; lang: string; quoteNumber: number; createdAt: number }
->();
-
-function getSendTokenPayload(token: string) {
-  const payload = sendTokenStore.get(token);
-  if (!payload) return null;
-  if (Date.now() - payload.createdAt > SEND_TOKEN_TTL_MS) {
-    sendTokenStore.delete(token);
-    return null;
-  }
-  return payload;
-}
+import { sendQuoteEmail } from '../services/send-quote.js';
 
 async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
   try {
@@ -566,7 +550,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         out.on('finish', resolve);
         out.on('error', reject);
         pdfDoc.on('error', reject);
-        pdfDoc.end();
+        // generateQuotePdf already calls doc.end(), so we don't end again here.
       });
 
       const uploadsBase = `${baseUrl}/uploads`;
@@ -684,132 +668,22 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       }));
 
       try {
-        if (channel === 'email') {
-          await sendQuoteEmail({
-            to: recipient,
-            subject: `Angebot ${quoteNumber}`,
-            text: 'Im Anhang finden Sie Ihr Angebot als PDF sowie die zugehörigen Dateien.',
-            pdf: {
-              filename: `Angebot-${quoteNumber}.pdf`,
-              content: pdfBuffer,
-            },
-            attachments: fileAttachments,
-          });
-        } else {
-          const sendToken = crypto.randomBytes(24).toString('hex');
-          sendTokenStore.set(sendToken, {
-            quoteId: id,
-            userId,
-            quoteDate,
-            validUntil,
-            lang,
-            quoteNumber: quoteNumberParam,
-            createdAt: Date.now(),
-          });
-          const publicUrl = process.env.PUBLIC_URL;
-          const baseUrl = publicUrl
-            ? publicUrl.replace(/\/+$/, '')
-            : `https://${request.hostname}`;
-          const mediaUrls = [
-            `${baseUrl}/uploads/quotes/send/${sendToken}/pdf`,
-            ...((attachments as any[]).map(
-              (a: any) => `${baseUrl}/uploads/quotes/send/${sendToken}/attachments/${a.id}/download`,
-            ) as string[]),
-          ];
-          await sendQuoteWhatsapp({
-            to: recipient,
-            body: 'Ihr Angebot wurde Ihnen zugesendet.',
-            mediaUrls,
-          });
-        }
+        await sendQuoteEmail({
+          to: recipient,
+          subject: `Angebot ${quoteNumber}`,
+          text: 'Im Anhang finden Sie Ihr Angebot als PDF sowie die zugehörigen Dateien.',
+          pdf: {
+            filename: `Angebot-${quoteNumber}.pdf`,
+            content: pdfBuffer,
+          },
+          attachments: fileAttachments,
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to send quote';
         return reply.status(400).send({ error: msg });
       }
 
       return reply.send({ ok: true });
-    },
-  );
-
-  // Public send links (no auth) so Twilio/recipients can fetch PDF + attachments and send as files
-
-  async function handleSendPdf(request: FastifyRequest, reply: FastifyReply) {
-      const { token } = request.params as { token: string };
-      const payload = getSendTokenPayload(token);
-      if (!payload) return reply.status(404).send({ error: 'Link expired or invalid' });
-
-      const [quote, user, attachmentList] = await Promise.all([
-        prisma.quote.findFirst({ where: { id: payload.quoteId, userId: payload.userId }, include: { items: true } }),
-        prisma.user.findUnique({ where: { id: payload.userId } }),
-        (prisma as any).quoteAttachment.findMany({ where: { quoteId: payload.quoteId }, orderBy: { createdAt: 'asc' } }),
-      ]);
-      if (!quote || !user) return reply.status(404).send({ error: 'Quote not found' });
-
-      const quoteNumber = String(payload.quoteNumber != null && payload.quoteNumber >= 1 ? payload.quoteNumber : 1);
-      const pdfDoc = generateQuotePdf(
-        {
-          id: quote.id,
-          clientName: quote.clientName,
-          customerAddress: (quote as any).customerAddress ?? null,
-          currency: (quote as any).currency ?? 'EUR',
-          vatRate: quote.vatRate,
-          subtotal: quote.subtotal,
-          vat: quote.vat,
-          total: quote.total,
-          items: quote.items.map((i: any) => ({ itemName: i.itemName, quantity: i.quantity, price: i.price, total: i.total })),
-          attachments: (attachmentList as any[]).map((a: any) => ({ filename: a.filename, url: '' })),
-        },
-        {
-          name: (user as any).name ?? null,
-          phone: (user as any).phone ?? null,
-          email: user.email,
-          companyName: (user as any).companyName ?? null,
-          companyAddress: (user as any).companyAddress ?? null,
-          websiteUrl: (user as any).websiteUrl ?? null,
-          bankName: (user as any).bankName ?? null,
-          blz: (user as any).blz ?? null,
-          kto: (user as any).kto ?? null,
-          iban: (user as any).iban ?? null,
-          bic: (user as any).bic ?? null,
-          taxNumber: (user as any).taxNumber ?? null,
-          taxOfficeName: (user as any).taxOfficeName ?? null,
-        },
-        { quoteDate: payload.quoteDate, validUntil: payload.validUntil, quoteNumber, lang: payload.lang },
-      );
-      const clientLabel = quote.clientName?.replace(/[^a-zA-Z0-9]/g, '_') ?? 'Angebot';
-      reply
-        .header('Content-Type', 'application/pdf')
-        .header('Content-Disposition', `inline; filename="Angebot-${clientLabel}-${quoteNumber}.pdf"`);
-      return reply.send(pdfDoc);
-  }
-
-  // Original API route
-  app.get('/quotes/send/:token/pdf', handleSendPdf);
-
-  // Public-friendly alias under /uploads so emailed links look like file URLs
-  app.get('/uploads/quotes/send/:token/pdf', handleSendPdf);
-
-  app.get(
-    '/quotes/send/:token/attachments/:attachmentId/download',
-    async (request, reply) => {
-      const { token, attachmentId } = request.params as { token: string; attachmentId: string };
-      const payload = getSendTokenPayload(token);
-      if (!payload) return reply.status(404).send({ error: 'Link expired or invalid' });
-
-      const att = await (prisma as any).quoteAttachment.findFirst({
-        where: { id: attachmentId, quoteId: payload.quoteId },
-      });
-      if (!att) return reply.status(404).send({ error: 'Attachment not found' });
-
-      const filePath = path.join(ATTACHMENTS_DIR, att.path);
-      if (!fs.existsSync(filePath)) return reply.status(404).send({ error: 'File not found' });
-
-      const stream = fs.createReadStream(filePath);
-      const isInline = att.mimeType === 'application/pdf' || att.mimeType.startsWith('image/');
-      reply
-        .header('Content-Type', att.mimeType)
-        .header('Content-Disposition', `${isInline ? 'inline' : 'attachment'}; filename="${att.filename}"`);
-      return reply.send(stream);
     },
   );
 
