@@ -60,6 +60,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
               subtotal: { type: 'number' },
               vat: { type: 'number' },
               total: { type: 'number' },
+              quoteNumber: { type: 'integer' },
+              quoteDate: { type: 'string' },
+              validUntil: { type: 'string' },
               createdAt: { type: 'string' },
             },
           },
@@ -74,7 +77,16 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         return reply.status(400).send({ error: msg });
       }
       const userId = request.userId!;
-      const { clientName, customerAddress, currency, vatRate = 0.19, items } = parsed.data;
+      const {
+        clientName,
+        customerAddress,
+        currency,
+        vatRate = 0.19,
+        quoteNumber,
+        quoteDate,
+        validUntil,
+        items,
+      } = parsed.data;
 
       let subtotal = 0;
       const itemRows = items.map((it) => {
@@ -95,12 +107,14 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           userId,
           clientName: clientName ?? null,
           ...(customerAddress !== undefined ? { customerAddress } : {}),
-          // cast to any to satisfy possibly stale Prisma types
           currency: (currency ?? 'EUR').toUpperCase(),
           vatRate,
           subtotal,
           vat: vatAmount,
           total,
+          quoteNumber: quoteNumber ?? null,
+          quoteDate: quoteDate ? new Date(quoteDate) : null,
+          validUntil: validUntil ? new Date(validUntil) : null,
           items: { create: itemRows },
         } as any,
         include: { items: true },
@@ -114,6 +128,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         subtotal: quote.subtotal,
         vat: quote.vat,
         total: quote.total,
+        quoteNumber: (quote as any).quoteNumber ?? null,
+        quoteDate: (quote as any).quoteDate ? (quote as any).quoteDate.toISOString() : null,
+        validUntil: (quote as any).validUntil ? (quote as any).validUntil.toISOString() : null,
         createdAt: quote.createdAt.toISOString(),
         items: quote.items.map((i: { id: string; itemName: string; quantity: number; price: number; total: number }) => ({
           id: i.id,
@@ -140,11 +157,14 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
                 id: { type: 'string' },
                 clientName: { type: 'string' },
                 customerAddress: { type: 'string' },
-                currency: { type: 'string' },
-                subtotal: { type: 'number' },
-                vat: { type: 'number' },
-                total: { type: 'number' },
-                createdAt: { type: 'string' },
+              currency: { type: 'string' },
+              subtotal: { type: 'number' },
+              vat: { type: 'number' },
+              total: { type: 'number' },
+              quoteNumber: { type: 'integer' },
+              quoteDate: { type: 'string' },
+              validUntil: { type: 'string' },
+              createdAt: { type: 'string' },
               },
             },
           },
@@ -165,6 +185,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         subtotal: q.subtotal,
         vat: q.vat,
         total: q.total,
+        quoteNumber: q.quoteNumber ?? null,
+        quoteDate: q.quoteDate ? q.quoteDate.toISOString() : null,
+        validUntil: q.validUntil ? q.validUntil.toISOString() : null,
         createdAt: q.createdAt.toISOString(),
       }));
     }
@@ -189,6 +212,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
               vat: { type: 'number' },
               total: { type: 'number' },
               createdAt: { type: 'string' },
+              quoteNumber: { type: 'integer' },
+              quoteDate: { type: 'string' },
+              validUntil: { type: 'string' },
               items: {
                 type: 'array',
                 items: {
@@ -226,6 +252,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         vat: quote.vat,
         total: quote.total,
         createdAt: quote.createdAt.toISOString(),
+        quoteNumber: (quote as any).quoteNumber ?? null,
+        quoteDate: (quote as any).quoteDate ? (quote as any).quoteDate.toISOString() : null,
+        validUntil: (quote as any).validUntil ? (quote as any).validUntil.toISOString() : null,
         items: quote.items.map((i: { id: string; itemName: string; quantity: number; price: number; total: number }) => ({
           id: i.id,
           itemName: i.itemName,
@@ -282,7 +311,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       const existing = await prisma.quote.findFirst({ where: { id, userId }, include: { items: true } });
       if (!existing) return reply.status(404).send({ error: 'Quote not found' });
 
-      const { clientName, customerAddress, currency, vatRate, items: itemsInput } = parsed.data;
+      const { clientName, customerAddress, currency, vatRate, quoteNumber, quoteDate, validUntil, items: itemsInput } = parsed.data;
       const vatRateNum = vatRate ?? existing.vatRate;
       const itemsToUse =
         itemsInput ??
@@ -314,6 +343,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           subtotal,
           vat: vatAmount,
           total,
+          ...(quoteNumber !== undefined ? { quoteNumber } : {}),
+          ...(quoteDate !== undefined ? { quoteDate: quoteDate ? new Date(quoteDate) : null } : {}),
+          ...(validUntil !== undefined ? { validUntil: validUntil ? new Date(validUntil) : null } : {}),
           items: {
             create: itemsToUse.map((it: { itemName: string; quantity: number; unitPrice: number }) => ({
               itemName: it.itemName,
@@ -336,6 +368,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         vat: quote.vat,
         total: quote.total,
         createdAt: quote.createdAt.toISOString(),
+        quoteNumber: (quote as any).quoteNumber ?? null,
+        quoteDate: (quote as any).quoteDate ? (quote as any).quoteDate.toISOString() : null,
+        validUntil: (quote as any).validUntil ? (quote as any).validUntil.toISOString() : null,
         items: quote.items.map((i: { id: string; itemName: string; quantity: number; price: number; total: number }) => ({
           id: i.id,
           itemName: i.itemName,

@@ -16,6 +16,9 @@ export const createQuoteBodySchema = z.object({
   customerAddress: z.string().optional(),
   currency: z.string().length(3).optional(),
   vatRate: z.number().min(0).max(1).optional(), // e.g. 0.19
+  quoteNumber: z.number().int().positive().optional(),
+  quoteDate: z.string().optional(),
+  validUntil: z.string().optional(),
   items: z.array(quoteItemSchema).min(1),
 });
 
@@ -24,6 +27,9 @@ export const updateQuoteBodySchema = z.object({
   customerAddress: z.string().optional().nullable(),
   currency: z.string().length(3).optional().nullable(),
   vatRate: z.number().min(0).max(1).optional(),
+  quoteNumber: z.number().int().positive().optional().nullable(),
+  quoteDate: z.string().optional().nullable(),
+  validUntil: z.string().optional().nullable(),
   items: z.array(quoteItemSchema).optional(),
 });
 

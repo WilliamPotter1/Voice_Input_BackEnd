@@ -44,6 +44,9 @@ model Quote {
   subtotal   Float    @default(0)
   vat        Float    @default(0)
   total      Float    @default(0)
+  quoteNumber Int?    @map("quote_number")
+  quoteDate   DateTime? @map("quote_date")
+  validUntil  DateTime? @map("valid_until")
   createdAt  DateTime @default(now()) @map("created_at")
 
   user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
