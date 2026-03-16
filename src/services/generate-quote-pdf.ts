@@ -313,9 +313,10 @@ export function generateQuotePdf(
   // =====================================================================
   //  HEADER  (sender one-liner + client block + company block)
   // =====================================================================
+  const senderTop = 45;
   doc.font(R).fontSize(7).fillColor('#888888');
   const senderLine = [user.companyName, user.companyAddress].filter(Boolean).join('  ·  ');
-  doc.text(senderLine, ML, 45, { underline: true, width: 260 });
+  doc.text(senderLine, ML, senderTop, { underline: true, width: 260 });
 
   const addrTop = 68;
   doc.fillColor('#000000').font(R).fontSize(bodyFs);
@@ -331,7 +332,8 @@ export function generateQuotePdf(
 
   const rightX = 370;
   const rightW = PAGE_W - MR - rightX;
-  let ry = addrTop;
+  // Align company name top with sender line
+  let ry = senderTop;
   doc.font(B).fontSize(bodyFs).text(user.companyName ?? '', rightX, ry, { width: rightW });
   ry = doc.y + 1;
   doc.font(R).fontSize(8.5);
