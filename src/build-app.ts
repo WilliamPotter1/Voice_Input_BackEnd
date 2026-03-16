@@ -1,7 +1,10 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance, type FastifyError } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
 import { healthRoutes } from './routes/health.js';
 import { speechToTextRoutes } from './routes/speech-to-text.js';
 import { authRoutes } from './routes/auth.js';
@@ -9,6 +12,8 @@ import { extractQuoteItemsRoutes } from './routes/extract-quote-items.js';
 import { quotesRoutes } from './routes/quotes.js';
 import { profileRoutes } from './routes/profile.js';
 import { authPlugin } from './plugins/auth.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
 
@@ -90,26 +95,44 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
   });
 
-  // ---- Routes --------------------------------------------------------------
-  app.get('/', async (_request, reply) => {
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Voice Quote API</title></head>
-<body style="font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;">
-  <h1>Voice Quote API</h1>
-  <p>Version 1.0. Backend is running.</p>
-  <p><a href="/api/health">Check health: GET /api/health</a></p>
-</body>
-</html>`;
-    return reply.type('text/html').send(html);
-  });
-
+  // ---- API routes ----------------------------------------------------------
   await app.register(healthRoutes, { prefix: '/api' });
   await app.register(authRoutes, { prefix: '/api' });
   await app.register(speechToTextRoutes, { prefix: '/api' });
   await app.register(extractQuoteItemsRoutes, { prefix: '/api' });
   await app.register(profileRoutes, { prefix: '/api' });
   await app.register(quotesRoutes, { prefix: '/api' });
+
+  // ---- Serve uploaded files (before static frontend) -----------------------
+  const uploadsDir = process.env.ATTACHMENTS_DIR ?? path.join(process.cwd(), 'uploads');
+  await app.register(fastifyStatic, {
+    root: uploadsDir,
+    prefix: '/uploads/',
+    decorateReply: false,
+  });
+
+  // ---- Serve frontend ------------------------------------------------------
+  const publicDir = process.env.PUBLIC_DIR ?? path.join(process.cwd(), 'public');
+  await app.register(fastifyStatic, {
+    root: publicDir,
+    prefix: '/',
+    decorateReply: false,
+  });
+
+  // ---- SPA fallback: serve index.html for any other GET request -------------
+  app.setNotFoundHandler(async (request, reply) => {
+    if (request.method !== 'GET') {
+      return reply.code(404).send({ error: 'Not Found' });
+    }
+    const indexPath = path.join(publicDir, 'index.html');
+    try {
+      const fsp = await import('node:fs/promises');
+      const html = await fsp.readFile(indexPath, 'utf-8');
+      return reply.type('text/html').send(html);
+    } catch {
+      return reply.code(404).send({ error: 'Not Found' });
+    }
+  });
 
   return app;
 }
