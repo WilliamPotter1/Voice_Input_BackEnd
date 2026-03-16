@@ -34,7 +34,8 @@ const PROFILE_FIELDS = {
 } as const;
 
 export async function profileRoutes(app: FastifyInstance, _opts: FastifyPluginOptions) {
-  const AVATARS_DIR = process.env.AVATARS_DIR ?? path.join(process.cwd(), 'uploads', 'avatars');
+  // Store avatars under /uploads/profile so they are served by the static /uploads route
+  const AVATARS_DIR = process.env.AVATARS_DIR ?? path.join(process.cwd(), 'uploads', 'profile');
 
   app.get(
     '/profile',
@@ -47,7 +48,7 @@ export async function profileRoutes(app: FastifyInstance, _opts: FastifyPluginOp
       if (!user) return { error: 'User not found' };
 
       const avatarUrl = user.avatarPath
-        ? `/api/api/profile/avatar/${path.basename(user.avatarPath)}`
+        ? `/uploads/profile/${path.basename(user.avatarPath)}`
         : null;
 
       return {
@@ -99,7 +100,7 @@ export async function profileRoutes(app: FastifyInstance, _opts: FastifyPluginOp
       });
 
       const avatarUrl = user.avatarPath
-        ? `/api/api/profile/avatar/${path.basename(user.avatarPath)}`
+        ? `/uploads/profile/${path.basename(user.avatarPath)}`
         : null;
 
       return {
@@ -156,7 +157,7 @@ export async function profileRoutes(app: FastifyInstance, _opts: FastifyPluginOp
         data: { avatarPath: filePath } as any,
       });
 
-      return { avatarUrl: `/api/api/profile/avatar/${filename}` };
+      return { avatarUrl: `/uploads/profile/${filename}` };
     },
   );
 
