@@ -522,8 +522,8 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         createdAt: Date.now(),
       });
 
-      // Public PDF link (token-based, no auth, for viewing in browser)
-      const pdfUrl = `${baseUrl}/uploads/quotes/send/${sendToken}/pdf`;
+      // Public PDF link (token-based, no auth, served by API route)
+      const pdfUrl = `${baseUrl}/api/quotes/send/${sendToken}/pdf`;
 
       // Public attachment links served via /uploads (no auth, static files)
       const uploadsBase = `${baseUrl}/uploads`;
@@ -823,7 +823,8 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         },
       });
 
-      const url = `/uploads/quotes/${id}/attachments/${attachment.id}/download`;
+      // URL must match actual file path for static serving: /uploads/<path>
+      const url = `/uploads/${attachment.path}`;
 
       return reply.send({
         id: attachment.id,
@@ -872,13 +873,13 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         orderBy: { createdAt: 'asc' },
       });
 
-      const base = '/uploads/quotes';
+      // URL must match actual file path for static serving: /uploads/<path>
       const mapped = atts.map((a: any) => ({
         id: a.id,
         filename: a.filename,
         mimeType: a.mimeType,
         size: a.size,
-        url: `${base}/${id}/attachments/${a.id}/download`,
+        url: `/uploads/${a.path}`,
         createdAt: a.createdAt.toISOString(),
       }));
 
