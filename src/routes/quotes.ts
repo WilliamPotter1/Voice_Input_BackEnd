@@ -474,14 +474,15 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
     },
   );
 
-  // Get temporary public links for quote PDF and attachments (for pre-filling email body)
-  app.get(
+  // Get public links for quote PDF and attachments (for pre-filling email / WhatsApp).
+  // This is a POST so we can generate and persist the PDF.
+  app.post(
     '/quotes/:id/send-links',
     {
       preHandler: requireAuth,
       schema: {
         params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
-        querystring: {
+        body: {
           type: 'object',
           properties: {
             quoteDate: { type: 'string' },
@@ -496,37 +497,82 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
     async (request, reply) => {
       const userId = request.userId!;
       const { id } = request.params as { id: string };
-      const q = request.query as { quoteDate: string; validUntil: string; quoteNumber: number; lang?: string };
+      const q = request.body as { quoteDate: string; validUntil: string; quoteNumber: number; lang?: string };
       const quoteNumberParam = Number(q.quoteNumber);
       if (!Number.isInteger(quoteNumberParam) || quoteNumberParam < 1) {
         return reply.status(400).send({ error: 'quoteNumber must be a positive integer' });
       }
 
-      const [quote, attachments] = await Promise.all([
-        prisma.quote.findFirst({ where: { id, userId } }),
+      const [quote, user, attachments] = await Promise.all([
+        prisma.quote.findFirst({ where: { id, userId }, include: { items: true } }),
+        prisma.user.findUnique({ where: { id: userId } }),
         (prisma as any).quoteAttachment.findMany({ where: { quoteId: id }, orderBy: { createdAt: 'asc' } }),
       ]);
       if (!quote) return reply.status(404).send({ error: 'Quote not found' });
+      if (!user) return reply.status(404).send({ error: 'User not found' });
 
       const baseUrl = process.env.PUBLIC_URL
         ? process.env.PUBLIC_URL.replace(/\/+$/, '')
         : `https://${request.hostname}`;
-      const sendToken = crypto.randomBytes(24).toString('hex');
-      sendTokenStore.set(sendToken, {
-        quoteId: id,
-        userId,
-        quoteDate: q.quoteDate,
-        validUntil: q.validUntil,
-        lang: q.lang ?? 'de',
-        quoteNumber: quoteNumberParam,
-        createdAt: Date.now(),
+      const pdfNumber = String(quoteNumberParam);
+
+      // Generate PDF document
+      const pdfDoc = generateQuotePdf(
+        {
+          id: quote.id,
+          clientName: quote.clientName,
+          customerAddress: (quote as any).customerAddress ?? null,
+          currency: (quote as any).currency ?? 'EUR',
+          vatRate: quote.vatRate,
+          subtotal: quote.subtotal,
+          vat: quote.vat,
+          total: quote.total,
+          items: quote.items.map((i: any) => ({
+            itemName: i.itemName,
+            quantity: i.quantity,
+            price: i.price,
+            total: i.total,
+          })),
+          attachments: (attachments as any[]).map((a: any) => ({
+            filename: a.filename,
+            url: '',
+          })),
+        },
+        {
+          name: (user as any).name ?? null,
+          phone: (user as any).phone ?? null,
+          email: user.email,
+          companyName: (user as any).companyName ?? null,
+          companyAddress: (user as any).companyAddress ?? null,
+          websiteUrl: (user as any).websiteUrl ?? null,
+          bankName: (user as any).bankName ?? null,
+          blz: (user as any).blz ?? null,
+          kto: (user as any).kto ?? null,
+          iban: (user as any).iban ?? null,
+          bic: (user as any).bic ?? null,
+          taxNumber: (user as any).taxNumber ?? null,
+          taxOfficeName: (user as any).taxOfficeName ?? null,
+        },
+        { quoteDate: q.quoteDate, validUntil: q.validUntil, quoteNumber: pdfNumber, lang: q.lang ?? 'de' },
+      );
+
+      // Persist PDF under uploads so it can be served statically
+      const pdfDir = path.join(ATTACHMENTS_DIR, 'quotes', id);
+      await fsp.mkdir(pdfDir, { recursive: true });
+      const pdfPath = path.join(pdfDir, `pdf-${pdfNumber}.pdf`);
+      await new Promise<void>((resolve, reject) => {
+        const out = fs.createWriteStream(pdfPath);
+        pdfDoc.pipe(out);
+        out.on('finish', resolve);
+        out.on('error', reject);
+        pdfDoc.on('error', reject);
+        pdfDoc.end();
       });
 
-      // Public PDF link (token-based, no auth) exposed under /uploads for consistency
-      const pdfUrl = `${baseUrl}/uploads/quotes/send/${sendToken}/pdf`;
+      const uploadsBase = `${baseUrl}/uploads`;
+      const pdfUrl = `${uploadsBase}/quotes/${id}/pdf-${encodeURIComponent(pdfNumber)}.pdf`;
 
       // Public attachment links served via /uploads (no auth, static files)
-      const uploadsBase = `${baseUrl}/uploads`;
       const attachmentUrls = (attachments as any[]).map((a: any) => {
         const rawPath = String(a.path ?? '').replace(/^[/\\]+/, '');
         const encodedPath = encodeURI(rawPath);
