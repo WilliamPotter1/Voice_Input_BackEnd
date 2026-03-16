@@ -522,8 +522,8 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         createdAt: Date.now(),
       });
 
-      // Public PDF link (token-based, no auth, served by API route)
-      const pdfUrl = `${baseUrl}/api/quotes/send/${sendToken}/pdf`;
+      // Public PDF link (token-based, no auth) exposed under /uploads for consistency
+      const pdfUrl = `${baseUrl}/uploads/quotes/send/${sendToken}/pdf`;
 
       // Public attachment links served via /uploads (no auth, static files)
       const uploadsBase = `${baseUrl}/uploads`;
@@ -685,10 +685,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
     },
   );
 
-  // Public send links (no auth) so Twilio can fetch PDF + attachments and send as files
-  app.get(
-    '/quotes/send/:token/pdf',
-    async (request, reply) => {
+  // Public send links (no auth) so Twilio/recipients can fetch PDF + attachments and send as files
+
+  async function handleSendPdf(request: FastifyRequest, reply: FastifyReply) {
       const { token } = request.params as { token: string };
       const payload = getSendTokenPayload(token);
       if (!payload) return reply.status(404).send({ error: 'Link expired or invalid' });
@@ -736,8 +735,13 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         .header('Content-Type', 'application/pdf')
         .header('Content-Disposition', `inline; filename="Angebot-${clientLabel}-${quoteNumber}.pdf"`);
       return reply.send(pdfDoc);
-    },
-  );
+  }
+
+  // Original API route
+  app.get('/quotes/send/:token/pdf', handleSendPdf);
+
+  // Public-friendly alias under /uploads so emailed links look like file URLs
+  app.get('/uploads/quotes/send/:token/pdf', handleSendPdf);
 
   app.get(
     '/quotes/send/:token/attachments/:attachmentId/download',
