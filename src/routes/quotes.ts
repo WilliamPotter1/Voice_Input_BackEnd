@@ -522,11 +522,19 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         createdAt: Date.now(),
       });
 
-      const pdfUrl = `${baseUrl}/api/api/quotes/send/${sendToken}/pdf`;
-      const attachmentUrls = (attachments as any[]).map((a: any) => ({
-        filename: a.filename,
-        url: `${baseUrl}/api/api/quotes/send/${sendToken}/attachments/${a.id}/download`,
-      }));
+      // Public PDF link (token-based, no auth, for viewing in browser)
+      const pdfUrl = `${baseUrl}/api/quotes/send/${sendToken}/pdf`;
+
+      // Public attachment links served via /uploads (no auth, static files)
+      const uploadsBase = `${baseUrl}/uploads`;
+      const attachmentUrls = (attachments as any[]).map((a: any) => {
+        const rawPath = String(a.path ?? '').replace(/^[/\\]+/, '');
+        const encodedPath = encodeURI(rawPath);
+        return {
+          filename: a.filename,
+          url: `${uploadsBase}/${encodedPath}`,
+        };
+      });
 
       return reply.send({ pdfUrl, attachmentUrls });
     },
