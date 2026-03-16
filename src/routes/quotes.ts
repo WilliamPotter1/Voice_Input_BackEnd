@@ -442,7 +442,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           })),
           attachments: (attachments as any[]).map((a: any) => ({
             filename: a.filename,
-            url: `${baseUrl}/api/quotes/${id}/attachments/${a.id}/download`,
+            url: `${baseUrl}/uploads/quotes/${id}/attachments/${a.id}/download`,
           })),
         },
         {
@@ -523,7 +523,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       });
 
       // Public PDF link (token-based, no auth, for viewing in browser)
-      const pdfUrl = `${baseUrl}/api/quotes/send/${sendToken}/pdf`;
+      const pdfUrl = `${baseUrl}/uploads/quotes/send/${sendToken}/pdf`;
 
       // Public attachment links served via /uploads (no auth, static files)
       const uploadsBase = `${baseUrl}/uploads`;
@@ -665,9 +665,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             ? publicUrl.replace(/\/+$/, '')
             : `https://${request.hostname}`;
           const mediaUrls = [
-            `${baseUrl}/api/quotes/send/${sendToken}/pdf`,
+            `${baseUrl}/uploads/quotes/send/${sendToken}/pdf`,
             ...((attachments as any[]).map(
-              (a: any) => `${baseUrl}/api/quotes/send/${sendToken}/attachments/${a.id}/download`,
+              (a: any) => `${baseUrl}/uploads/quotes/send/${sendToken}/attachments/${a.id}/download`,
             ) as string[]),
           ];
           await sendQuoteWhatsapp({
@@ -823,7 +823,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         },
       });
 
-      const url = `/api/quotes/${id}/attachments/${attachment.id}/download`;
+      const url = `/uploads/quotes/${id}/attachments/${attachment.id}/download`;
 
       return reply.send({
         id: attachment.id,
@@ -872,7 +872,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         orderBy: { createdAt: 'asc' },
       });
 
-      const base = '/api/quotes';
+      const base = '/uploads/quotes';
       const mapped = atts.map((a: any) => ({
         id: a.id,
         filename: a.filename,
