@@ -725,7 +725,8 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         await sendQuoteEmail({
           to: recipient,
           cc: user.email,
-          subject: `${companyLabel} - ${subjectTitle}`,
+          // Subject format: "Company name - Quote number customer name"
+          subject: `${companyLabel} - ${subjectTitle} ${clientLabel}`.trim(),
           text: 'Im Anhang finden Sie Ihr Angebot als PDF sowie die zugehörigen Dateien.',
           pdf: {
             filename: `${pdfFilenameBase}.pdf`,
