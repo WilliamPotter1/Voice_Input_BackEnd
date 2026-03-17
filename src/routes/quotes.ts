@@ -63,6 +63,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
               quoteNumber: { type: 'integer' },
               quoteDate: { type: 'string' },
               validUntil: { type: 'string' },
+              sentAt: { type: 'string' },
+              sentByEmail: { type: 'boolean' },
+              sentByWhats: { type: 'boolean' },
               createdAt: { type: 'string' },
             },
           },
@@ -188,6 +191,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         quoteNumber: q.quoteNumber ?? null,
         quoteDate: q.quoteDate ? q.quoteDate.toISOString() : null,
         validUntil: q.validUntil ? q.validUntil.toISOString() : null,
+        sentAt: q.sentAt ? q.sentAt.toISOString() : null,
+        sentByEmail: q.sentByEmail ?? false,
+        sentByWhats: q.sentByWhats ?? false,
         createdAt: q.createdAt.toISOString(),
       }));
     }
@@ -215,6 +221,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
               quoteNumber: { type: 'integer' },
               quoteDate: { type: 'string' },
               validUntil: { type: 'string' },
+              sentAt: { type: 'string' },
+              sentByEmail: { type: 'boolean' },
+              sentByWhats: { type: 'boolean' },
               items: {
                 type: 'array',
                 items: {
@@ -255,6 +264,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         quoteNumber: (quote as any).quoteNumber ?? null,
         quoteDate: (quote as any).quoteDate ? (quote as any).quoteDate.toISOString() : null,
         validUntil: (quote as any).validUntil ? (quote as any).validUntil.toISOString() : null,
+        sentAt: (quote as any).sentAt ? (quote as any).sentAt.toISOString() : null,
+        sentByEmail: (quote as any).sentByEmail ?? false,
+        sentByWhats: (quote as any).sentByWhats ?? false,
         items: quote.items.map((i: { id: string; itemName: string; quantity: number; price: number; total: number }) => ({
           id: i.id,
           itemName: i.itemName,
@@ -484,10 +496,12 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
 
       const titleMap: Record<string, string> = { de: 'Angebot', en: 'Quotation', it: 'Preventivo', fr: 'Devis', es: 'Presupuesto' };
       const pdfTitle = titleMap[q.lang ?? 'de'] ?? titleMap.en;
-      const clientLabel = quote.clientName?.replace(/[^a-zA-Z0-9]/g, '_') ?? pdfTitle;
+      const companyLabel = ((user as any).companyName ?? 'Firma').replace(/[^a-zA-Z0-9]/g, ' ').trim();
+      const clientLabel = (quote.clientName ?? pdfTitle).replace(/[^a-zA-Z0-9]/g, ' ').trim();
+      const downloadName = `${companyLabel} - ${pdfTitle} ${quoteNumber} ${clientLabel}`.trim();
       reply
         .header('Content-Type', 'application/pdf')
-        .header('Content-Disposition', `inline; filename="${pdfTitle}-${clientLabel}-${quoteNumber}.pdf"`);
+        .header('Content-Disposition', `inline; filename="${downloadName}.pdf"`);
 
       return reply.send(pdfDoc);
     },
@@ -703,12 +717,18 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       }));
 
       try {
+        const companyLabel = ((user as any).companyName ?? 'Firma').trim();
+        const clientLabel = (quote.clientName ?? '').trim();
+        const subjectTitle = `Angebot ${quoteNumber}`;
+        const pdfFilenameBase = `${companyLabel} - ${subjectTitle} ${clientLabel}`.trim();
+
         await sendQuoteEmail({
           to: recipient,
-          subject: `Angebot ${quoteNumber}`,
+          cc: user.email,
+          subject: `${companyLabel} - ${subjectTitle}`,
           text: 'Im Anhang finden Sie Ihr Angebot als PDF sowie die zugehörigen Dateien.',
           pdf: {
-            filename: `Angebot-${quoteNumber}.pdf`,
+            filename: `${pdfFilenameBase}.pdf`,
             content: pdfBuffer,
           },
           attachments: fileAttachments,

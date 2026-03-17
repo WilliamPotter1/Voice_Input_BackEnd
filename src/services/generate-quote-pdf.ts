@@ -394,7 +394,8 @@ export function generateQuotePdf(
   if (user.websiteUrl)     { doc.text(`Internet: ${user.websiteUrl}`, rightX, ry, { width: rightW }); ry = doc.y + 1; }
   ry += 6;
   doc.text(`${s.quoteNr}: ${options.quoteNumber}`, rightX, ry, { width: rightW }); ry = doc.y + 1;
-  doc.text(`${s.date}: ${options.quoteDate}`, rightX, ry, { width: rightW });
+  const todayIso = new Date().toISOString().slice(0, 10);
+  doc.text(`${s.date}: ${todayIso}`, rightX, ry, { width: rightW });
 
   // =====================================================================
   //  TITLE

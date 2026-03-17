@@ -47,6 +47,9 @@ model Quote {
   quoteNumber Int?    @map("quote_number")
   quoteDate   DateTime? @map("quote_date")
   validUntil  DateTime? @map("valid_until")
+  sentAt      DateTime? @map("sent_at")
+  sentByEmail Boolean   @default(false) @map("sent_by_email")
+  sentByWhats Boolean   @default(false) @map("sent_by_whatsapp")
   createdAt  DateTime @default(now()) @map("created_at")
 
   user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)

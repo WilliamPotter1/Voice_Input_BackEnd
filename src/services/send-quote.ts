@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 
 interface EmailOptions {
   to: string;
+  cc?: string;
   subject: string;
   text: string;
   html?: string;
@@ -33,6 +34,7 @@ export async function sendQuoteEmail(opts: EmailOptions): Promise<void> {
   await transporter.sendMail({
     from: SMTP_FROM,
     to: opts.to,
+    cc: opts.cc,
     subject: opts.subject,
     text: opts.text,
     html: opts.html,
