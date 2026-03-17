@@ -48,6 +48,17 @@ interface PdfOptions {
   lang: string;
 }
 
+function formatDateDmy(dateStr: string): string {
+  if (!dateStr) return '';
+  // Accept "YYYY-MM-DD" or full ISO "YYYY-MM-DDTHH:MM:SSZ"
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
+
 // ---------------------------------------------------------------------------
 // Per-language text
 // ---------------------------------------------------------------------------
@@ -394,8 +405,8 @@ export function generateQuotePdf(
   if (user.websiteUrl)     { doc.text(`Internet: ${user.websiteUrl}`, rightX, ry, { width: rightW }); ry = doc.y + 1; }
   ry += 6;
   doc.text(`${s.quoteNr}: ${options.quoteNumber}`, rightX, ry, { width: rightW }); ry = doc.y + 1;
-  const todayIso = new Date().toISOString().slice(0, 10);
-  doc.text(`${s.date}: ${todayIso}`, rightX, ry, { width: rightW });
+  const todayIso = new Date().toISOString();
+  doc.text(`${s.date}: ${formatDateDmy(todayIso)}`, rightX, ry, { width: rightW });
 
   // =====================================================================
   //  TITLE
@@ -492,10 +503,11 @@ export function generateQuotePdf(
   doc.text(s.closingInterest, ML, cy, { width: CONTENT_W, lineGap: 2 });
   cy = doc.y + gapLine;
   doc.text(s.closingContact(user.phone ?? ''), ML, cy, { width: CONTENT_W, lineGap: 2 });
-  cy = doc.y + gapLine + 2;
-  doc.text(s.closingDelivery(options.quoteDate), ML, cy, { width: CONTENT_W, lineGap: 2 });
-  cy = doc.y + Math.max(gapLine - 2, 2);
-  doc.text(s.closingValid(options.validUntil), ML, cy, { width: CONTENT_W, lineGap: 2 });
+  // Only show "valid until" sentence if a valid-until date was provided
+  if (options.validUntil) {
+    cy = doc.y + Math.max(gapLine - 2, 2);
+    doc.text(s.closingValid(formatDateDmy(options.validUntil)), ML, cy, { width: CONTENT_W, lineGap: 2 });
+  }
 
   // =====================================================================
   //  ATTACHMENTS  (only indicate that attachments exist)

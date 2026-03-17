@@ -18,7 +18,7 @@ export const createQuoteBodySchema = z.object({
   vatRate: z.number().min(0).max(1).optional(), // e.g. 0.19
   quoteNumber: z.number().int().positive().optional(),
   quoteDate: z.string().optional(),
-  validUntil: z.string().optional(),
+  validUntil: z.string().optional().nullable(),
   items: z.array(quoteItemSchema).min(1),
 });
 
