@@ -512,9 +512,9 @@ export function generateQuotePdf(
   cy = doc.y + gapSec;
   doc.font(R).fontSize(bodyFs);
   doc.text(s.regards, ML, cy);
-  cy = doc.y + gapSec + 4;
+  cy = doc.y + gapSec * 2 + 4;
   doc.moveTo(ML, cy).lineTo(ML + 160, cy).lineWidth(0.5).strokeColor('#999999').stroke();
-  cy += 12; // add extra vertical space between regards and name
+  cy += 5; // add extra vertical space between regards and name
   doc.font(B).fontSize(bodyFs);
   doc.text(user.name ?? '', ML, cy);
 
@@ -535,8 +535,12 @@ export function generateQuotePdf(
   doc.font(B).fontSize(fSize).fillColor('#333333');
   doc.text(user.companyName ?? '', fCol1, fTop, { width: fColW, lineGap: fLG });
   doc.font(R).fillColor('#555555');
-  if (user.name)           doc.text(`${s.owner} ${user.name}`, { width: fColW, lineGap: fLG });
-  if (user.companyAddress) doc.text(user.companyAddress, { width: fColW, lineGap: fLG });
+  if (user.name) doc.text(`${s.owner} ${user.name}`, { width: fColW, lineGap: fLG });
+  if (user.companyAddress) {
+    const ua = splitFullAddress(user.companyAddress);
+    if (ua.street) doc.text(ua.street, { width: fColW, lineGap: fLG });
+    if (ua.city)   doc.text(ua.city,   { width: fColW, lineGap: fLG });
+  }
 
   doc.font(B).fontSize(fSize).fillColor('#333333');
   doc.text(user.bankName ?? '', fCol2, fTop, { width: fColW, lineGap: fLG });
