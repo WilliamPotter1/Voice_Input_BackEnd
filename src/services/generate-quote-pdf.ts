@@ -315,7 +315,47 @@ export function generateQuotePdf(
   // =====================================================================
   const senderTop = 45;
   doc.font(R).fontSize(7).fillColor('#888888');
-  const senderLine = [user.companyName, user.companyAddress].filter(Boolean).join('  ·  ');
+  function splitFullAddress(full?: string | null): { city?: string; street?: string } {
+    if (!full) return {};
+    const s = full.trim();
+    if (!s) return {};
+
+    // Prefer "street, ZIP City" style: split on first comma
+    const parts = s.split(',').map((p) => p.trim());
+    if (parts.length === 2) {
+      const [first, second] = parts;
+      // If second part starts with 5 digits, treat it as city, first as street
+      if (/^\d{5}\b/.test(second)) {
+        return { street: first, city: second };
+      }
+      // If first part starts with ZIP, invert
+      if (/^\d{5}\b/.test(first)) {
+        return { city: first, street: second };
+      }
+    }
+
+    // Fallback: try splitting on " - " or " – "
+    const dashParts = s.split(/[–-]/).map((p) => p.trim());
+    if (dashParts.length === 2) {
+      const [left, right] = dashParts;
+      if (/^\d{5}\b/.test(left)) return { city: left, street: right };
+      if (/^\d{5}\b/.test(right)) return { street: left, city: right };
+    }
+
+    // If string starts with ZIP, treat leading "ZIP City, rest" as city
+    const zipCityMatch = s.match(/^(\d{5}\s+\S+(?:\s+\S+)*)(?:,\s*(.*))?$/);
+    if (zipCityMatch) {
+      const city = zipCityMatch[1];
+      const street = zipCityMatch[2];
+      return street ? { city, street } : { city };
+    }
+
+    // Otherwise treat whole as street
+    return { street: s };
+  }
+
+  const senderAddr = splitFullAddress(user.companyAddress);
+  const senderLine = [user.companyName, senderAddr.street, senderAddr.city].filter(Boolean).join('  ·  ');
   doc.text(senderLine, ML, senderTop, { underline: true, width: 260 });
 
   const addrTop = 68;
@@ -327,7 +367,14 @@ export function generateQuotePdf(
     doc.font(R);
   }
   if (quote.customerAddress) {
-    doc.text(quote.customerAddress, ML, ay, { width: 250, lineGap: 1 });
+    const ca = splitFullAddress(quote.customerAddress);
+    if (ca.street) {
+      doc.text(ca.street, ML, ay, { width: 250, lineGap: 1 });
+      ay = doc.y + 1;
+    }
+    if (ca.city) {
+      doc.text(ca.city, ML, ay, { width: 250, lineGap: 1 });
+    }
   }
 
   const rightX = 370;
@@ -337,7 +384,11 @@ export function generateQuotePdf(
   doc.font(B).fontSize(bodyFs).text(user.companyName ?? '', rightX, ry, { width: rightW });
   ry = doc.y + 1;
   doc.font(R).fontSize(8.5);
-  if (user.companyAddress) { doc.text(user.companyAddress, rightX, ry, { width: rightW, lineGap: 1 }); ry = doc.y + 4; }
+  if (user.companyAddress) {
+    const ua = splitFullAddress(user.companyAddress);
+    if (ua.street) { doc.text(ua.street, rightX, ry, { width: rightW, lineGap: 1 }); ry = doc.y + 1; }
+    if (ua.city)   { doc.text(ua.city,   rightX, ry, { width: rightW, lineGap: 1 }); ry = doc.y + 4; }
+  }
   if (user.phone)          { doc.text(`Tel.: ${user.phone}`, rightX, ry, { width: rightW }); ry = doc.y + 1; }
   doc.text(`E-Mail: ${user.email}`, rightX, ry, { width: rightW }); ry = doc.y + 1;
   if (user.websiteUrl)     { doc.text(`Internet: ${user.websiteUrl}`, rightX, ry, { width: rightW }); ry = doc.y + 1; }
@@ -463,7 +514,7 @@ export function generateQuotePdf(
   doc.text(s.regards, ML, cy);
   cy = doc.y + gapSec + 4;
   doc.moveTo(ML, cy).lineTo(ML + 160, cy).lineWidth(0.5).strokeColor('#999999').stroke();
-  cy += 5;
+  cy += 12; // add extra vertical space between regards and name
   doc.font(B).fontSize(bodyFs);
   doc.text(user.name ?? '', ML, cy);
 

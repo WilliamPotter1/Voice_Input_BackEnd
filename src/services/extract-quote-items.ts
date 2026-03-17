@@ -37,19 +37,19 @@ Rules:
   4) Street/house number
   For example: "10115 Berlin, Invalidenstraße 116".
 - If you only know some parts, still keep the same order and omit the missing pieces, e.g. "10115 Berlin" or "10115 Berlin, Invalidenstraße".
-- "vatRate" must be a number between 0 and 1 representing the tax/VAT fraction (e.g. 0.19 for 19%, 0.07 for 7%). If no tax/VAT is clearly specified, use null.
-- "currency" must be a 3-letter ISO 4217 currency code (e.g. "EUR", "CHF", "USD") that matches the main currency implied in the text. If you cannot confidently determine the currency, use "EUR" by default.
-- Each element must have: "itemName" (string), "quantity" (number, can be fractional like 0.5), "unitPrice" (number, in the main currency unit, e.g. euros), and "unit" (string).
-- Infer product/service name from the text. Use clear, professional labels (e.g. "Window installation", "Door installation").
-- If the text mentions "3 windows for 250 euros each", output itemName like "Window installation" or "Windows", quantity 3, unitPrice 250.
-- If quantity or price is missing for an item, use quantity 1 and 0 for price.
-- Preserve the currency implied in the text; output numbers only (no currency symbols).
-- For units, DO NOT replace specific phrases with generic ones:
-  - If the transcription says "square meter", "m²", or "Quadratmeter", use a unit like "square meter" or "Quadratmeter" (not just "meter").
-  - If the transcription says something like "pauschal" (flat fee / lump sum), use a unit like "pauschal" or "lump sum", not "piece".
-  - If the transcription clearly implies a unit but does not name it explicitly, infer the most precise natural unit from context (for example: for "10 windows" use "window"; for "3 hours of work" use "hour"; for "monthly service" use "month" or "service period").
-  - NEVER fall back to vague generic units like "piece" unless the word "piece" (or its direct translation) is actually used in the transcription.
-  - In general, prefer the most specific unit phrase mentioned or clearly implied in the text, in the same language as the user.`;
+ - "vatRate" must be a number between 0 and 1 representing the tax/VAT fraction (e.g. 0.19 for 19%, 0.07 for 7%). If no tax/VAT is clearly specified, use null.
+ - "currency" must be a 3-letter ISO 4217 currency code (e.g. "EUR", "CHF", "USD") that matches the main currency implied in the text. If you cannot confidently determine the currency, use "EUR" by default.
+ - Each element must have: "itemName" (string), "quantity" (number, can be fractional like 0.5), "unitPrice" (number, in the main currency unit, e.g. euros), and "unit" (string).
+ - Infer product/service name from the text. Use clear, professional labels (e.g. "Window installation", "Door installation").
+ - If the text mentions "3 windows for 250 euros each", output itemName like "Window installation" or "Windows", quantity 3, unitPrice 250.
+ - If quantity or price is missing for an item, use quantity 1 and 0 for price.
+ - Preserve the currency implied in the text; output numbers only (no currency symbols).
+ - For units, DO NOT replace specific phrases with generic ones, and ALWAYS keep the units in exactly the same language as the transcription (never translate units to English when the transcription is not English):
+  - If the transcription says "square meter", "m²", or "Quadratmeter", use the corresponding phrase in the user language (e.g. in German: "Quadratmeter"; in English: "square meter") – not just "meter".
+  - If the transcription says something like "pauschal" (flat fee / lump sum), use a unit like "pauschal" in German, or the exact word from the transcription in the same language, not "piece".
+  - If the transcription clearly implies a unit but does not name it explicitly, infer the most precise natural unit from context using the transcription language (for example: for "10 windows" use "window" / "Fenster"; for "3 hours of work" use "hour" / "Stunde"; for "monthly service" use "month" or the equivalent in the user language).
+  - NEVER fall back to vague generic units like "piece" unless the word "piece" (or its direct translation in the same language) is actually used in the transcription.
+  - In general, prefer the most specific unit phrase mentioned or clearly implied in the text, and keep both "itemName" and "unit" strictly in the same language as the user's transcription (no English leakage when language is not English).`;
 
 export async function extractQuoteItems(
   text: string,
@@ -69,7 +69,7 @@ export async function extractQuoteItems(
         ? [
             {
               role: 'system' as const,
-              content: `Language hint: ${languageHint}. You MUST use exactly this language for itemName and unit labels, including all units of measure. Do NOT use English words for units when the language is not English.`,
+              content: `Language hint: ${languageHint}. You MUST use exactly this language for ALL text you output: "itemName", "unit", and any other strings. Do NOT translate units or item names to English when the language is not English; instead, always use the natural words and phrases from the transcription language.`,
             },
           ]
         : []),
@@ -113,7 +113,20 @@ export async function extractQuoteItems(
     const items = arr.map((x: unknown) => {
       const o = x as Record<string, unknown>;
       const baseName = String(o.itemName ?? o.name ?? 'Item').trim() || 'Item';
-      const unit = String((o as any).unit ?? '').trim();
+      let unit = String((o as any).unit ?? '').trim();
+
+      // Post-process some common units into the transcription language when we have a hint.
+      if (languageHint === 'de' && unit) {
+        const u = unit.toLowerCase();
+        if (u.includes('square meter') || u.includes('square metre')) {
+          unit = 'Quadratmeter';
+        } else if (u.includes('hour')) {
+          unit = 'Stunde';
+        } else if (u.includes('flat fee') || u.includes('lump sum')) {
+          unit = 'pauschal';
+        }
+      }
+
       const nameWithUnit = unit ? `${baseName} (${unit})` : baseName;
 
       const rawQtyVal = (o as any).quantity;
