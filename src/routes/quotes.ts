@@ -21,6 +21,29 @@ async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
 
 export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOptions) {
   const ATTACHMENTS_DIR = process.env.ATTACHMENTS_DIR ?? path.join(process.cwd(), 'uploads');
+  const supportedLangs = ['de', 'en', 'it', 'fr', 'es'] as const;
+  type SupportedLang = (typeof supportedLangs)[number];
+
+  function normalizeLang(input: unknown): SupportedLang {
+    const s = String(input ?? '').toLowerCase();
+    return (supportedLangs as readonly string[]).includes(s) ? (s as SupportedLang) : 'de';
+  }
+
+  function formatDateForLang(lang: SupportedLang, isoOrDate: string): string {
+    const d = new Date(isoOrDate);
+    if (Number.isNaN(d.getTime())) return '';
+    const locale =
+      lang === 'de'
+        ? 'de-DE'
+        : lang === 'en'
+          ? 'en-GB'
+          : lang === 'it'
+            ? 'it-IT'
+            : lang === 'fr'
+              ? 'fr-FR'
+              : 'es-ES';
+    return new Intl.DateTimeFormat(locale).format(d);
+  }
 
   app.post(
     '/quotes',
@@ -634,6 +657,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             quoteDate: { type: 'string' },
             validUntil: { type: 'string' },
             quoteNumber: { type: 'integer' },
+            lang: { type: 'string' },
           },
           required: ['channel', 'recipient', 'quoteDate', 'validUntil'],
         },
@@ -648,6 +672,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         quoteDate: string;
         validUntil: string;
         quoteNumber?: number;
+        lang?: string;
       };
       const { channel, recipient, quoteDate, validUntil } = body;
       const quoteNumberParam = body.quoteNumber != null ? Number(body.quoteNumber) : NaN;
@@ -664,7 +689,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       if (!user) return reply.status(404).send({ error: 'User not found' });
 
       const quoteNumber = String(quoteNumberParam);
-      const lang = 'de';
+      const lang = normalizeLang(body.lang);
 
       // Generate PDF into buffer
       const pdfDoc = generateQuotePdf(
@@ -722,21 +747,81 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         const subjectTitle = `Angebot ${quoteNumber}`;
         const pdfFilenameBase = `${companyLabel} - ${subjectTitle} ${clientLabel}`.trim();
 
-        const customerName = clientLabel || 'Kunde';
-        const validUntilDate = validUntil ? new Date(validUntil) : null;
-        const validUntilStr =
-          validUntilDate && !Number.isNaN(validUntilDate.getTime())
-            ? validUntilDate.toLocaleDateString('de-DE')
-            : '';
+        const customerName =
+          clientLabel ||
+          (lang === 'de'
+            ? 'Kunde'
+            : lang === 'en'
+              ? 'Customer'
+              : lang === 'it'
+                ? 'Cliente'
+                : lang === 'fr'
+                  ? 'Client'
+                  : 'Cliente');
+        const validUntilStr = validUntil ? formatDateForLang(lang, validUntil) : '';
         const senderName = ((user as any).name ?? '').trim() || companyLabel;
 
+        const emailTextByLang: Record<
+          SupportedLang,
+          {
+            greeting: (customer: string) => string;
+            intro: string;
+            interest: string;
+            contact: string;
+            validUntil: (date: string) => string;
+            regards: string;
+          }
+        > = {
+          de: {
+            greeting: (c) => `Sehr geehrte(r) ${c},`,
+            intro: 'wir freuen uns über Ihr Interesse an unserem Service/unseren Produkten.',
+            interest: 'Ist unser Angebot für Sie interessant? Dann freuen wir uns über Ihren Auftrag!',
+            contact: 'Zögern Sie bitte nicht, uns bei Fragen zu kontaktieren.',
+            validUntil: (d) => `Dieses Angebot ist gültig bis zum ${d}.`,
+            regards: 'Mit freundlichen Grüßen',
+          },
+          en: {
+            greeting: (c) => `Dear ${c},`,
+            intro: 'we are pleased about your interest in our services/products.',
+            interest: 'Is our offer interesting for you? We look forward to your order!',
+            contact: 'Please do not hesitate to contact us if you have any questions.',
+            validUntil: (d) => `This offer is valid until ${d}.`,
+            regards: 'Kind regards',
+          },
+          it: {
+            greeting: (c) => `Gentile ${c},`,
+            intro: 'siamo lieti del Suo interesse per i nostri servizi/prodotti.',
+            interest: 'Il nostro preventivo Le interessa? Saremo lieti di ricevere il Suo ordine!',
+            contact: 'Non esiti a contattarci per qualsiasi domanda.',
+            validUntil: (d) => `Questo preventivo è valido fino al ${d}.`,
+            regards: 'Cordiali saluti',
+          },
+          fr: {
+            greeting: (c) => `Bonjour ${c},`,
+            intro: "nous vous remercions de l’intérêt que vous portez à nos services/produits.",
+            interest: 'Notre offre vous intéresse ? Nous serions ravis de recevoir votre commande !',
+            contact: "N’hésitez pas à nous contacter si vous avez des questions.",
+            validUntil: (d) => `Ce devis est valable jusqu’au ${d}.`,
+            regards: 'Cordialement',
+          },
+          es: {
+            greeting: (c) => `Estimado/a ${c},`,
+            intro: 'gracias por su interés en nuestros servicios/productos.',
+            interest: '¿Le interesa nuestra oferta? ¡Esperamos su pedido con gusto!',
+            contact: 'No dude en contactarnos si tiene alguna pregunta.',
+            validUntil: (d) => `Este presupuesto es válido hasta el ${d}.`,
+            regards: 'Atentamente',
+          },
+        };
+
+        const s = emailTextByLang[lang];
         const bodyTextLines = [
-          `Sehr geehrte(r) ${customerName}, wir freuen uns über Ihr Interesse an unserem Service/unseren Produkten.`,
-          'Is our offer interesting for you? Dann freuen wir uns über Ihren Auftrag!',
-          'Zögern Sie bitte nicht, uns bei Fragen zu kontaktieren.',
-          validUntilStr ? `This offer is valid until the ${validUntilStr}.` : '',
-          `Mit freundlichen Grüßen`,
-          `Enduser ${senderName}`,
+          `${s.greeting(customerName)} ${s.intro}`,
+          s.interest,
+          s.contact,
+          validUntilStr ? s.validUntil(validUntilStr) : '',
+          s.regards,
+          senderName,
         ].filter(Boolean);
 
         await sendQuoteEmail({
