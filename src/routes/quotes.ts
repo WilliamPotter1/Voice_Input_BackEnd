@@ -42,7 +42,12 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             : lang === 'fr'
               ? 'fr-FR'
               : 'es-ES';
-    return new Intl.DateTimeFormat(locale).format(d);
+    // Force numeric day/month with leading zeros (e.g. 18.03.2026 instead of 18.3.2026).
+    return new Intl.DateTimeFormat(locale, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(d);
   }
 
   app.post(
