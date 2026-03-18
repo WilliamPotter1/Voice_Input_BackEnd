@@ -544,10 +544,10 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       const clientLabel = (quote.clientName ?? pdfTitle).replace(/[^a-zA-Z0-9]/g, ' ').trim();
       const quoteNrLabelByLang: Record<string, string> = {
         de: 'Angebot-Nr.:',
-        en: 'Quote No.',
-        it: 'Preventivo n.',
-        fr: 'Devis n°',
-        es: 'Presupuesto n.°',
+        en: 'Quote No.:',
+        it: 'Preventivo n.:',
+        fr: 'Devis n°:',
+        es: 'Presupuesto n.°:',
       };
       const quoteNrLabel = quoteNrLabelByLang[q.lang ?? 'de'] ?? quoteNrLabelByLang.en;
       const downloadName = `${companyLabel} - ${quoteNrLabel} ${quoteNumber} ${clientLabel}`.trim();
