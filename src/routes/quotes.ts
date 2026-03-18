@@ -56,7 +56,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           properties: {
             clientName: { type: 'string' },
             customerAddress: { type: 'string' },
-            freeText: { type: 'string', maxLength: 2000 },
+            freeText: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'null' }] },
             currency: { type: 'string' },
             vatRate: { type: 'number' },
             items: {
@@ -321,7 +321,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           properties: {
             clientName: { type: 'string' },
             customerAddress: { type: 'string' },
-            freeText: { type: 'string', maxLength: 2000 },
+            freeText: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'null' }] },
             currency: { type: 'string' },
             vatRate: { type: 'number' },
             items: {
