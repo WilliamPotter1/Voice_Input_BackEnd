@@ -722,12 +722,29 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         const subjectTitle = `Angebot ${quoteNumber}`;
         const pdfFilenameBase = `${companyLabel} - ${subjectTitle} ${clientLabel}`.trim();
 
+        const customerName = clientLabel || 'Kunde';
+        const validUntilDate = validUntil ? new Date(validUntil) : null;
+        const validUntilStr =
+          validUntilDate && !Number.isNaN(validUntilDate.getTime())
+            ? validUntilDate.toLocaleDateString('de-DE')
+            : '';
+        const senderName = ((user as any).name ?? '').trim() || companyLabel;
+
+        const bodyTextLines = [
+          `Sehr geehrte(r) ${customerName}, wir freuen uns über Ihr Interesse an unserem Service/unseren Produkten.`,
+          'Is our offer interesting for you? Dann freuen wir uns über Ihren Auftrag!',
+          'Zögern Sie bitte nicht, uns bei Fragen zu kontaktieren.',
+          validUntilStr ? `This offer is valid until the ${validUntilStr}.` : '',
+          `Mit freundlichen Grüßen`,
+          `Enduser ${senderName}`,
+        ].filter(Boolean);
+
         await sendQuoteEmail({
           to: recipient,
           cc: user.email,
           // Subject format: "Company name - Quote number customer name"
           subject: `${companyLabel} - ${subjectTitle} ${clientLabel}`.trim(),
-          text: 'Im Anhang finden Sie Ihr Angebot als PDF sowie die zugehörigen Dateien.',
+          text: bodyTextLines.join('\n\n'),
           pdf: {
             filename: `${pdfFilenameBase}.pdf`,
             content: pdfBuffer,
