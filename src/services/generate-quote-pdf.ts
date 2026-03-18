@@ -379,9 +379,8 @@ export function generateQuotePdf(
   doc.fillColor('#000000').font(R).fontSize(bodyFs);
   let ay = addrTop;
   if (quote.clientName) {
-    doc.font(B).text(quote.clientName, ML, ay, { width: 250 });
+    doc.font(R).text(quote.clientName, ML, ay, { width: 250 });
     ay = doc.y + 2;
-    doc.font(R);
   }
   if (quote.customerAddress) {
     const ca = splitFullAddress(quote.customerAddress);
@@ -398,7 +397,7 @@ export function generateQuotePdf(
   const rightW = PAGE_W - MR - rightX;
   // Align company name top with sender line
   let ry = senderTop;
-  doc.font(B).fontSize(bodyFs).text(user.companyName ?? '', rightX, ry, { width: rightW });
+  doc.font(R).fontSize(bodyFs).text(user.companyName ?? '', rightX, ry, { width: rightW });
   ry = doc.y + 1;
   doc.font(R).fontSize(8.5);
   if (user.companyAddress || user.companyCity) {
