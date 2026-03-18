@@ -322,6 +322,9 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             clientName: { type: 'string' },
             customerAddress: { type: 'string' },
             freeText: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'null' }] },
+            quoteNumber: { type: 'integer' },
+            quoteDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+            validUntil: { anyOf: [{ type: 'string' }, { type: 'null' }] },
             currency: { type: 'string' },
             vatRate: { type: 'number' },
             items: {
