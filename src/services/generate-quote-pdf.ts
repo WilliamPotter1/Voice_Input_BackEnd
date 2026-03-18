@@ -16,6 +16,7 @@ interface PdfQuote {
   id: string;
   clientName: string | null;
   customerAddress: string | null;
+  freeText?: string | null;
   currency: string;
   vatRate: number;
   subtotal: number;
@@ -501,6 +502,13 @@ export function generateQuotePdf(
   doc.font(B).fontSize(bodyFs + 1).fillColor('#000000');
   doc.text(s.grandTotal, totLabelX, cy);
   textRight(doc, fmtMoney(quote.total, cur), totValueX, cy, totValueW);
+
+  // Optional free text block directly under totals
+  if (quote.freeText && quote.freeText.trim().length > 0) {
+    cy = doc.y + gapSec;
+    doc.font(R).fontSize(bodyFs).fillColor('#000000');
+    doc.text(quote.freeText.trim(), ML, cy, { width: CONTENT_W, lineGap: 3 });
+  }
 
   // =====================================================================
   //  CLOSING TEXT

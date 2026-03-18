@@ -95,11 +95,35 @@ export async function profileRoutes(app: FastifyInstance, _opts: FastifyPluginOp
         data.taxRate = Number.isFinite(val) && val >= 0 && val <= 1 ? val : null;
       }
 
-      const user = await prisma.user.update({
-        where: { id: request.userId! },
-        data,
-        select: PROFILE_FIELDS,
-      });
+      const cityFromBody = typeof body.companyCity === 'string' ? body.companyCity.trim() : '';
+      let user: any;
+      try {
+        user = await prisma.user.update({
+          where: { id: request.userId! },
+          data,
+          select: PROFILE_FIELDS,
+        });
+      } catch (err) {
+        // Backward-compatible fallback:
+        // If `company_city` column isn't present yet (migration not executed),
+        // store city inside `companyAddress` as "street, city".
+        const addressFromBody = typeof body.companyAddress === 'string' ? body.companyAddress.trim() : '';
+        const combinedAddress =
+          addressFromBody && cityFromBody ? `${addressFromBody}, ${cityFromBody}` : addressFromBody || null;
+
+        const fallbackData: Record<string, unknown> = { ...data };
+        delete fallbackData.companyCity;
+        if (combinedAddress !== null) fallbackData.companyAddress = combinedAddress;
+
+        // Omit `companyCity` from selection so it doesn't break when column missing.
+        const { companyCity: _omit, ...fallbackSelect } = PROFILE_FIELDS as any;
+
+        user = await prisma.user.update({
+          where: { id: request.userId! },
+          data: fallbackData,
+          select: fallbackSelect,
+        });
+      }
 
       const avatarUrl = user.avatarPath
         ? `/uploads/profile/${path.basename(user.avatarPath)}`
@@ -113,7 +137,7 @@ export async function profileRoutes(app: FastifyInstance, _opts: FastifyPluginOp
         websiteUrl: user.websiteUrl ?? '',
         companyName: user.companyName ?? '',
         companyAddress: user.companyAddress ?? '',
-        companyCity: user.companyCity ?? '',
+        companyCity: user.companyCity ?? cityFromBody ?? '',
         bankName: user.bankName ?? '',
         blz: user.blz ?? '',
         kto: user.kto ?? '',

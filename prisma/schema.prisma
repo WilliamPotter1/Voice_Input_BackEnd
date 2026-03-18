@@ -40,6 +40,7 @@ model Quote {
   userId     String   @map("user_id")
   clientName String?  @map("client_name")
   customerAddress String? @map("customer_address")
+  freeText   String?  @map("free_text")
   currency   String   @default("EUR") @map("currency")
   vatRate    Float    @default(0.19) @map("vat_rate")
   subtotal   Float    @default(0)

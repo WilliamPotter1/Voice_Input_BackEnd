@@ -106,6 +106,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       const {
         clientName,
         customerAddress,
+        freeText,
         currency,
         vatRate = 0.19,
         quoteNumber,
@@ -133,6 +134,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           userId,
           clientName: clientName ?? null,
           ...(customerAddress !== undefined ? { customerAddress } : {}),
+          ...(freeText !== undefined ? { freeText } : {}),
           currency: (currency ?? 'EUR').toUpperCase(),
           vatRate,
           subtotal,
@@ -207,6 +209,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         id: q.id,
         clientName: q.clientName,
         customerAddress: q.customerAddress ?? null,
+        freeText: (q as any).freeText ?? null,
         currency: q.currency ?? 'EUR',
         subtotal: q.subtotal,
         vat: q.vat,
@@ -278,6 +281,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         id: quote.id,
         clientName: quote.clientName,
         customerAddress: (quote as any).customerAddress ?? null,
+        freeText: (quote as any).freeText ?? null,
         currency: (quote as any).currency ?? 'EUR',
         vatRate: quote.vatRate,
         subtotal: quote.subtotal,
@@ -369,6 +373,11 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             : (existing as any).customerAddress !== undefined
               ? { customerAddress: (existing as any).customerAddress }
               : {}),
+          ...(parsed.data.freeText !== undefined
+            ? { freeText: parsed.data.freeText }
+            : (existing as any).freeText !== undefined
+              ? { freeText: (existing as any).freeText }
+              : {}),
           ...(currency
             ? { currency: currency.toUpperCase() }
             : (existing as any).currency !== undefined
@@ -397,6 +406,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         id: quote.id,
         clientName: quote.clientName,
         customerAddress: (quote as any).customerAddress ?? null,
+        freeText: (quote as any).freeText ?? null,
         currency: (quote as any).currency ?? 'EUR',
         vatRate: quote.vatRate,
         subtotal: quote.subtotal,
@@ -483,6 +493,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           id: quote.id,
           clientName: quote.clientName,
           customerAddress: (quote as any).customerAddress ?? null,
+          freeText: (quote as any).freeText ?? null,
           currency: (quote as any).currency ?? 'EUR',
           vatRate: quote.vatRate,
           subtotal: quote.subtotal,
@@ -579,6 +590,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           id: quote.id,
           clientName: quote.clientName,
           customerAddress: (quote as any).customerAddress ?? null,
+          freeText: (quote as any).freeText ?? null,
           currency: (quote as any).currency ?? 'EUR',
           vatRate: quote.vatRate,
           subtotal: quote.subtotal,
@@ -699,6 +711,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           id: quote.id,
           clientName: quote.clientName,
           customerAddress: (quote as any).customerAddress ?? null,
+          freeText: (quote as any).freeText ?? null,
           currency: (quote as any).currency ?? 'EUR',
           vatRate: quote.vatRate,
           subtotal: quote.subtotal,
