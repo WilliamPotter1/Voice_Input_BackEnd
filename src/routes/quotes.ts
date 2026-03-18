@@ -774,7 +774,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         > = {
           de: {
             greeting: (c) => `Sehr geehrte(r) ${c},`,
-            intro: 'wir freuen uns über Ihr Interesse an unserem Service/unseren Produkten.',
+            intro: 'Wir freuen uns über Ihr Interesse an unserem Service/unseren Produkten.',
             interest: 'Ist unser Angebot für Sie interessant? Dann freuen wir uns über Ihren Auftrag!',
             contact: 'Zögern Sie bitte nicht, uns bei Fragen zu kontaktieren.',
             validUntil: (d) => `Dieses Angebot ist gültig bis zum ${d}.`,
@@ -782,7 +782,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           },
           en: {
             greeting: (c) => `Dear ${c},`,
-            intro: 'we are pleased about your interest in our services/products.',
+            intro: 'We are pleased about your interest in our services/products.',
             interest: 'Is our offer interesting for you? We look forward to your order!',
             contact: 'Please do not hesitate to contact us if you have any questions.',
             validUntil: (d) => `This offer is valid until ${d}.`,
@@ -790,7 +790,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           },
           it: {
             greeting: (c) => `Gentile ${c},`,
-            intro: 'siamo lieti del Suo interesse per i nostri servizi/prodotti.',
+            intro: 'Siamo lieti del Suo interesse per i nostri servizi/prodotti.',
             interest: 'Il nostro preventivo Le interessa? Saremo lieti di ricevere il Suo ordine!',
             contact: 'Non esiti a contattarci per qualsiasi domanda.',
             validUntil: (d) => `Questo preventivo è valido fino al ${d}.`,
@@ -798,7 +798,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           },
           fr: {
             greeting: (c) => `Bonjour ${c},`,
-            intro: "nous vous remercions de l’intérêt que vous portez à nos services/produits.",
+            intro: "Nous vous remercions de l’intérêt que vous portez à nos services/produits.",
             interest: 'Notre offre vous intéresse ? Nous serions ravis de recevoir votre commande !',
             contact: "N’hésitez pas à nous contacter si vous avez des questions.",
             validUntil: (d) => `Ce devis est valable jusqu’au ${d}.`,
@@ -806,7 +806,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
           },
           es: {
             greeting: (c) => `Estimado/a ${c},`,
-            intro: 'gracias por su interés en nuestros servicios/productos.',
+            intro: 'Gracias por su interés en nuestros servicios/productos.',
             interest: '¿Le interesa nuestra oferta? ¡Esperamos su pedido con gusto!',
             contact: 'No dude en contactarnos si tiene alguna pregunta.',
             validUntil: (d) => `Este presupuesto es válido hasta el ${d}.`,
@@ -816,7 +816,8 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
 
         const s = emailTextByLang[lang];
         const bodyTextLines = [
-          `${s.greeting(customerName)} ${s.intro}`,
+          `${s.greeting(customerName)}`,
+          s.intro,
           s.interest,
           s.contact,
           validUntilStr ? s.validUntil(validUntilStr) : '',
