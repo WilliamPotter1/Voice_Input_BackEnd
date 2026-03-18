@@ -79,6 +79,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
               id: { type: 'string' },
               clientName: { type: 'string' },
               customerAddress: { type: 'string' },
+              freeText: { anyOf: [{ type: 'string' }, { type: 'null' }] },
               currency: { type: 'string' },
               vatRate: { type: 'number' },
               subtotal: { type: 'number' },
@@ -152,6 +153,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
         id: quote.id,
         clientName: quote.clientName,
         customerAddress: (quote as any).customerAddress ?? null,
+        freeText: (quote as any).freeText ?? null,
         currency: (quote as any).currency ?? 'EUR',
         vatRate: quote.vatRate,
         subtotal: quote.subtotal,
@@ -186,6 +188,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
                 id: { type: 'string' },
                 clientName: { type: 'string' },
                 customerAddress: { type: 'string' },
+                freeText: { anyOf: [{ type: 'string' }, { type: 'null' }] },
               currency: { type: 'string' },
               subtotal: { type: 'number' },
               vat: { type: 'number' },
@@ -239,6 +242,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
               id: { type: 'string' },
               clientName: { type: 'string' },
               customerAddress: { type: 'string' },
+              freeText: { anyOf: [{ type: 'string' }, { type: 'null' }] },
               currency: { type: 'string' },
               vatRate: { type: 'number' },
               subtotal: { type: 'number' },
@@ -352,7 +356,7 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
       const existing = await prisma.quote.findFirst({ where: { id, userId }, include: { items: true } });
       if (!existing) return reply.status(404).send({ error: 'Quote not found' });
 
-      const { clientName, customerAddress, currency, vatRate, quoteNumber, quoteDate, validUntil, items: itemsInput } = parsed.data;
+      const { clientName, customerAddress, freeText, currency, vatRate, quoteNumber, quoteDate, validUntil, items: itemsInput } = parsed.data;
       const vatRateNum = vatRate ?? existing.vatRate;
       const itemsToUse =
         itemsInput ??
@@ -375,8 +379,8 @@ export async function quotesRoutes(app: FastifyInstance, _opts: FastifyPluginOpt
             : (existing as any).customerAddress !== undefined
               ? { customerAddress: (existing as any).customerAddress }
               : {}),
-          ...(parsed.data.freeText !== undefined
-            ? { freeText: parsed.data.freeText }
+          ...(freeText !== undefined
+            ? { freeText }
             : (existing as any).freeText !== undefined
               ? { freeText: (existing as any).freeText }
               : {}),
