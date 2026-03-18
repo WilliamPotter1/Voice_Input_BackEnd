@@ -31,6 +31,7 @@ interface PdfUser {
   email: string;
   companyName: string | null;
   companyAddress: string | null;
+  companyCity: string | null;
   websiteUrl: string | null;
   bankName: string | null;
   blz: string | null;
@@ -114,7 +115,7 @@ const pdfStrings: Record<string, PdfStrings> = {
     attachmentsLabel: 'Es liegen Anhänge zu diesem Angebot vor.',
     regards: 'Mit freundlichen Grüßen',
     owner: 'Inh.',
-    taxId: 'Steuer-Nr. / USt-Id.',
+    taxId: 'Steuer-Nr. oder USt-Id.',
     taxOffice: 'Finanzamt',
   },
   en: {
@@ -140,7 +141,7 @@ const pdfStrings: Record<string, PdfStrings> = {
     attachmentsLabel: 'This quote has attachments.',
     regards: 'Kind regards',
     owner: 'Owner',
-    taxId: 'Tax No. / VAT ID',
+    taxId: 'Tax No. or VAT ID',
     taxOffice: 'Tax office',
   },
   it: {
@@ -166,7 +167,7 @@ const pdfStrings: Record<string, PdfStrings> = {
     attachmentsLabel: 'A questo preventivo sono allegati dei documenti.',
     regards: 'Cordiali saluti',
     owner: 'Titolare',
-    taxId: 'P.IVA / Cod. Fiscale',
+    taxId: 'P.IVA o Cod. Fiscale',
     taxOffice: 'Agenzia delle Entrate',
   },
   fr: {
@@ -192,7 +193,7 @@ const pdfStrings: Record<string, PdfStrings> = {
     attachmentsLabel: 'Ce devis contient des pièces jointes.',
     regards: 'Cordialement',
     owner: 'Gérant',
-    taxId: 'N° SIRET / TVA',
+    taxId: 'N° SIRET ou TVA',
     taxOffice: 'Centre des impôts',
   },
   es: {
@@ -218,7 +219,7 @@ const pdfStrings: Record<string, PdfStrings> = {
     attachmentsLabel: 'Este presupuesto tiene archivos adjuntos.',
     regards: 'Atentamente',
     owner: 'Propietario',
-    taxId: 'NIF / CIF',
+    taxId: 'NIF o CIF',
     taxOffice: 'Agencia Tributaria',
   },
 };
@@ -365,8 +366,12 @@ export function generateQuotePdf(
     return { street: s };
   }
 
-  const senderAddr = splitFullAddress(user.companyAddress);
-  const senderLine = [user.companyName, senderAddr.street, senderAddr.city].filter(Boolean).join('  ·  ');
+  // Store companyAddress as street and companyCity as city (if present).
+  // Fallback: if companyCity is missing, try splitting legacy full address.
+  const fallbackSenderAddr = !user.companyCity ? splitFullAddress(user.companyAddress) : {};
+  const senderStreet = user.companyAddress ?? fallbackSenderAddr.street;
+  const senderCity = user.companyCity ?? fallbackSenderAddr.city;
+  const senderLine = [user.companyName, senderStreet, senderCity].filter(Boolean).join('  ·  ');
   doc.text(senderLine, ML, senderTop, { underline: true, width: 260 });
 
   const addrTop = 68;
@@ -395,10 +400,12 @@ export function generateQuotePdf(
   doc.font(B).fontSize(bodyFs).text(user.companyName ?? '', rightX, ry, { width: rightW });
   ry = doc.y + 1;
   doc.font(R).fontSize(8.5);
-  if (user.companyAddress) {
-    const ua = splitFullAddress(user.companyAddress);
-    if (ua.street) { doc.text(ua.street, rightX, ry, { width: rightW, lineGap: 1 }); ry = doc.y + 1; }
-    if (ua.city)   { doc.text(ua.city,   rightX, ry, { width: rightW, lineGap: 1 }); ry = doc.y + 4; }
+  if (user.companyAddress || user.companyCity) {
+    const fallbackAddr2 = !user.companyCity ? splitFullAddress(user.companyAddress) : {};
+    const street = user.companyAddress ?? fallbackAddr2.street;
+    const city = user.companyCity ?? fallbackAddr2.city;
+    if (street) { doc.text(street, rightX, ry, { width: rightW, lineGap: 1 }); ry = doc.y + 1; }
+    if (city)   { doc.text(city,   rightX, ry, { width: rightW, lineGap: 1 }); ry = doc.y + 4; }
   }
   if (user.phone)          { doc.text(`Tel.: ${user.phone}`, rightX, ry, { width: rightW }); ry = doc.y + 1; }
   doc.text(`E-Mail: ${user.email}`, rightX, ry, { width: rightW }); ry = doc.y + 1;
@@ -549,10 +556,12 @@ export function generateQuotePdf(
   doc.text(user.companyName ?? '', fCol1, fTop, { width: fColW, lineGap: fLG });
   doc.font(R).fillColor('#555555');
   if (user.name) doc.text(`${s.owner} ${user.name}`, { width: fColW, lineGap: fLG });
-  if (user.companyAddress) {
-    const ua = splitFullAddress(user.companyAddress);
-    if (ua.street) doc.text(ua.street, { width: fColW, lineGap: fLG });
-    if (ua.city)   doc.text(ua.city,   { width: fColW, lineGap: fLG });
+  if (user.companyAddress || user.companyCity) {
+    const fallbackAddr3 = !user.companyCity ? splitFullAddress(user.companyAddress) : {};
+    const street = user.companyAddress ?? fallbackAddr3.street;
+    const city = user.companyCity ?? fallbackAddr3.city;
+    if (street) doc.text(street, { width: fColW, lineGap: fLG });
+    if (city)   doc.text(city,   { width: fColW, lineGap: fLG });
   }
 
   doc.font(B).fontSize(fSize).fillColor('#333333');

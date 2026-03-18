@@ -23,6 +23,7 @@ const PROFILE_FIELDS = {
   websiteUrl: true,
   companyName: true,
   companyAddress: true,
+  companyCity: true,
   bankName: true,
   blz: true,
   kto: true,
@@ -59,6 +60,7 @@ export async function profileRoutes(app: FastifyInstance, _opts: FastifyPluginOp
         websiteUrl: user.websiteUrl ?? '',
         companyName: user.companyName ?? '',
         companyAddress: user.companyAddress ?? '',
+        companyCity: user.companyCity ?? '',
         bankName: user.bankName ?? '',
         blz: user.blz ?? '',
         kto: user.kto ?? '',
@@ -79,7 +81,7 @@ export async function profileRoutes(app: FastifyInstance, _opts: FastifyPluginOp
       const data: Record<string, unknown> = {};
 
       const stringFields = [
-        'name', 'phone', 'websiteUrl', 'companyName', 'companyAddress',
+        'name', 'phone', 'websiteUrl', 'companyName', 'companyAddress', 'companyCity',
         'bankName', 'blz', 'kto', 'iban', 'bic', 'taxNumber', 'taxOfficeName',
       ];
       for (const key of stringFields) {
@@ -111,6 +113,7 @@ export async function profileRoutes(app: FastifyInstance, _opts: FastifyPluginOp
         websiteUrl: user.websiteUrl ?? '',
         companyName: user.companyName ?? '',
         companyAddress: user.companyAddress ?? '',
+        companyCity: user.companyCity ?? '',
         bankName: user.bankName ?? '',
         blz: user.blz ?? '',
         kto: user.kto ?? '',

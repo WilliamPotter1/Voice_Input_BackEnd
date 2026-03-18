@@ -19,6 +19,7 @@ model User {
   websiteUrl     String?  @map("website_url")
   companyName    String?  @map("company_name")
   companyAddress String?  @map("company_address")
+  companyCity    String?  @map("company_city")
   bankName       String?  @map("bank_name")
   blz            String?
   kto            String?
