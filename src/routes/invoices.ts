@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyPluginOptions, FastifyRequest, FastifyRepl
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { prisma } from '../lib/db.js';
 import { createInvoiceBodySchema, updateInvoiceBodySchema } from '../schemas/invoices.js';
 import { generateQuotePdf } from '../services/generate-quote-pdf.js';
@@ -560,6 +561,89 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
     const invoice = await (prisma as any).invoice.findFirst({ where: { id, userId } });
     if (!invoice) return reply.status(404).send({ error: 'Invoice not found' });
     await (prisma as any).invoice.delete({ where: { id } });
+    return reply.status(204).send();
+  });
+
+  app.post('/invoices/:id/attachments', async (request, reply) => {
+    const userId = request.userId!;
+    const { id } = request.params as { id: string };
+    const invoice = await (prisma as any).invoice.findFirst({ where: { id, userId } });
+    if (!invoice) return reply.status(400).send({ error: 'Invoice not found' });
+    const data = await request.file();
+    if (!data) return reply.status(400).send({ error: 'No file uploaded' });
+    const file = data.file;
+    const filename = data.filename || 'attachment';
+    const mimeType = data.mimetype || 'application/octet-stream';
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of file) chunks.push(chunk as Buffer);
+    const buffer = Buffer.concat(chunks);
+    const size = buffer.byteLength;
+    if (size > 25 * 1024 * 1024) {
+      return reply.status(400).send({ error: 'File too large. Max 25 MB.' });
+    }
+
+    const attachmentId = randomUUID();
+    const safeName = filename.replace(/[^\w.\-() ]+/g, '_');
+    const ext = path.extname(safeName) || '';
+    const base = path.basename(safeName, ext) || 'attachment';
+    const storedName = `${base}-${attachmentId}${ext}`;
+
+    const relPath = path.join('invoices', id, 'attachments', storedName).replace(/\\/g, '/');
+    const absPath = path.join(ATTACHMENTS_DIR, relPath);
+    await fsp.mkdir(path.dirname(absPath), { recursive: true });
+    await fsp.writeFile(absPath, buffer);
+
+    const attachment = await (prisma as any).invoiceAttachment.create({
+      data: {
+        id: attachmentId,
+        invoiceId: id,
+        filename: safeName,
+        mimeType,
+        size,
+        path: relPath,
+      },
+    });
+    return reply.send({
+      id: attachment.id,
+      filename: attachment.filename,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      url: `/uploads/${attachment.path}`,
+      createdAt: attachment.createdAt.toISOString(),
+    });
+  });
+
+  app.get('/invoices/:id/attachments', async (request, reply) => {
+    const userId = request.userId!;
+    const { id } = request.params as { id: string };
+    const invoice = await (prisma as any).invoice.findFirst({ where: { id, userId } });
+    if (!invoice) return reply.status(200).send({ error: 'Invoice not found' } as any);
+    const atts = await (prisma as any).invoiceAttachment.findMany({
+      where: { invoiceId: id },
+      orderBy: { createdAt: 'asc' },
+    });
+    return atts.map((a: any) => ({
+      id: a.id,
+      filename: a.filename,
+      mimeType: a.mimeType,
+      size: a.size,
+      url: `/uploads/${a.path}`,
+      createdAt: a.createdAt.toISOString(),
+    }));
+  });
+
+  app.delete('/invoices/:id/attachments/:attachmentId', async (request, reply) => {
+    const userId = request.userId!;
+    const { id, attachmentId } = request.params as { id: string; attachmentId: string };
+    const invoice = await (prisma as any).invoice.findFirst({ where: { id, userId } });
+    if (!invoice) return reply.status(400).send({ error: 'Invoice not found' });
+    const att = await (prisma as any).invoiceAttachment.findFirst({ where: { id: attachmentId, invoiceId: id } });
+    if (!att) return reply.status(400).send({ error: 'Attachment not found' });
+    try {
+      await fsp.unlink(path.join(ATTACHMENTS_DIR, att.path));
+    } catch {}
+    await (prisma as any).invoiceAttachment.delete({ where: { id: attachmentId } });
     return reply.status(204).send();
   });
 }
