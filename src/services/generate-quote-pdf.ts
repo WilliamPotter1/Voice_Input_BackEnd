@@ -48,6 +48,8 @@ interface PdfOptions {
   validUntil: string;
   quoteNumber: string;
   lang: string;
+  deliveryDate?: string;
+  docType?: 'quote' | 'invoice';
 }
 
 function formatDateDmy(dateStr: string): string {
@@ -225,8 +227,27 @@ const pdfStrings: Record<string, PdfStrings> = {
   },
 };
 
-function getStrings(lang: string): PdfStrings {
-  return pdfStrings[lang] ?? pdfStrings.en;
+function getStrings(lang: string, docType: 'quote' | 'invoice' = 'quote'): PdfStrings {
+  const base = pdfStrings[lang] ?? pdfStrings.en;
+  if (docType !== 'invoice') return base;
+  if (lang === 'de') {
+    return {
+      ...base,
+      title: 'Rechnung',
+      quoteNr: 'Rechnungs-Nr.',
+      intro: 'vielen Dank für Ihren Auftrag, den wir wie folgt vereinbarungsgemäß in Rechnung stellen:',
+      introOffer: '',
+      closingInterest: 'Bitte überweisen Sie den Gesamtbetrag bis zum Fälligkeitsdatum auf das angegebene Konto.',
+      closingContact: () => '',
+      closingValid: (d) => `Diese Rechnung ist gültig bis zum ${d}.`,
+      attachmentsLabel: 'Es liegen Anhänge zu dieser Rechnung vor.',
+    };
+  }
+  return {
+    ...base,
+    title: 'Invoice',
+    quoteNr: 'Invoice No.',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -296,7 +317,7 @@ export function generateQuotePdf(
   });
 
   const cur = quote.currency || 'EUR';
-  const s = getStrings(options.lang);
+  const s = getStrings(options.lang, options.docType ?? 'quote');
   const R = 'Helvetica';
   const B = 'Helvetica-Bold';
   const nItems = quote.items.length;
@@ -412,8 +433,20 @@ export function generateQuotePdf(
   if (user.websiteUrl)     { doc.text(`Internet: ${user.websiteUrl}`, rightX, ry, { width: rightW }); ry = doc.y + 1; }
   ry += 6;
   doc.text(`${s.quoteNr}: ${options.quoteNumber}`, rightX, ry, { width: rightW }); ry = doc.y + 1;
-  const todayIso = new Date().toISOString();
-  doc.text(`${s.date}: ${formatDateDmy(todayIso)}`, rightX, ry, { width: rightW });
+  const displayDate = options.quoteDate || new Date().toISOString();
+  doc.text(`${s.date}: ${formatDateDmy(displayDate)}`, rightX, ry, { width: rightW });
+  if (options.docType === 'invoice' && options.deliveryDate) {
+    const deliveryLabelByLang: Record<string, string> = {
+      de: 'Lieferdatum',
+      en: 'Delivery date',
+      it: 'Data di consegna',
+      fr: 'Date de livraison',
+      es: 'Fecha de entrega',
+    };
+    const deliveryLabel = deliveryLabelByLang[options.lang] ?? deliveryLabelByLang.en;
+    ry = doc.y + 1;
+    doc.text(`${deliveryLabel}: ${formatDateDmy(options.deliveryDate)}`, rightX, ry, { width: rightW });
+  }
 
   // =====================================================================
   //  TITLE
@@ -432,7 +465,9 @@ export function generateQuotePdf(
   cy = doc.y + gapLine;
   doc.text(s.intro, ML, cy, { width: CONTENT_W, lineGap: 2 });
   cy = doc.y + Math.max(gapLine - 2, 2);
-  doc.text(s.introOffer, ML, cy, { width: CONTENT_W, lineGap: 2 });
+  if (s.introOffer.trim().length > 0) {
+    doc.text(s.introOffer, ML, cy, { width: CONTENT_W, lineGap: 2 });
+  }
 
   // =====================================================================
   //  ITEMS TABLE
@@ -516,7 +551,10 @@ export function generateQuotePdf(
   doc.font(R).fontSize(bodyFs).fillColor('#000000');
   doc.text(s.closingInterest, ML, cy, { width: CONTENT_W, lineGap: 2 });
   cy = doc.y + gapLine;
-  doc.text(s.closingContact(user.phone ?? ''), ML, cy, { width: CONTENT_W, lineGap: 2 });
+  const closingContactText = s.closingContact(user.phone ?? '').trim();
+  if (closingContactText.length > 0) {
+    doc.text(closingContactText, ML, cy, { width: CONTENT_W, lineGap: 2 });
+  }
   // Only show "valid until" sentence if a valid-until date was provided
   if (options.validUntil) {
     cy = doc.y + Math.max(gapLine - 2, 2);

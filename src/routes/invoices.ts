@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../lib/db.js';
 import { createInvoiceBodySchema, updateInvoiceBodySchema } from '../schemas/invoices.js';
-import { generateInvoicePdf } from '../services/generate-invoice-pdf.js';
+import { generateQuotePdf } from '../services/generate-quote-pdf.js';
 
 async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
   try {
@@ -190,11 +190,12 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
     if (!invoice) return reply.status(404).send({ error: 'Invoice not found' });
     if (!user) return reply.status(404).send({ error: 'User not found' });
 
-    const pdfDoc = generateInvoicePdf(
+    const pdfDoc = generateQuotePdf(
       {
+        id: invoice.id,
         clientName: invoice.clientName ?? null,
         customerAddress: invoice.customerAddress ?? null,
-        additionalInfo: invoice.additionalInfo ?? null,
+        freeText: invoice.additionalInfo ?? null,
         currency: invoice.currency ?? 'EUR',
         vatRate: invoice.vatRate,
         subtotal: invoice.subtotal,
@@ -206,9 +207,18 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
           price: it.price,
           total: it.total,
         })),
+        attachments: [],
       },
       {
         name: (user as any).name ?? null,
+        websiteUrl: (user as any).websiteUrl ?? null,
+        bankName: (user as any).bankName ?? null,
+        blz: (user as any).blz ?? null,
+        kto: (user as any).kto ?? null,
+        iban: (user as any).iban ?? null,
+        bic: (user as any).bic ?? null,
+        taxNumber: (user as any).taxNumber ?? null,
+        taxOfficeName: (user as any).taxOfficeName ?? null,
         email: user.email,
         phone: (user as any).phone ?? null,
         companyName: (user as any).companyName ?? null,
@@ -216,15 +226,33 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
         companyCity: (user as any).companyCity ?? null,
       },
       {
-        invoiceDate: q.invoiceDate ?? new Date().toISOString().slice(0, 10),
-        dueDate: q.dueDate ?? '',
-        invoiceNumber: String(invoiceNumberParam),
+        quoteDate: q.invoiceDate ?? new Date().toISOString().slice(0, 10),
+        validUntil: q.dueDate ?? '',
+        quoteNumber: String(invoiceNumberParam),
         lang: q.lang ?? 'de',
+        deliveryDate: invoice.deliveryDate ? invoice.deliveryDate.toISOString() : '',
+        docType: 'invoice',
       },
     );
     const companyLabel = ((user as any).companyName ?? 'Company').replace(/[^a-zA-Z0-9]/g, ' ').trim();
-    const clientLabel = (invoice.clientName ?? 'Invoice').replace(/[^a-zA-Z0-9]/g, ' ').trim();
-    const filename = `${companyLabel} - Invoice No. ${invoiceNumberParam} ${clientLabel}`.trim();
+    const titleByLang: Record<string, string> = {
+      de: 'Rechnung',
+      en: 'Invoice',
+      it: 'Fattura',
+      fr: 'Facture',
+      es: 'Factura',
+    };
+    const invoiceNrLabelByLang: Record<string, string> = {
+      de: 'Rechnungs-Nr.:',
+      en: 'Invoice No.:',
+      it: 'Fattura n.:',
+      fr: 'Facture n°:',
+      es: 'Factura n.º:',
+    };
+    const lang = String(q.lang ?? 'de');
+    const clientLabel = (invoice.clientName ?? (titleByLang[lang] ?? titleByLang.en)).replace(/[^a-zA-Z0-9]/g, ' ').trim();
+    const nrLabel = invoiceNrLabelByLang[lang] ?? invoiceNrLabelByLang.en;
+    const filename = `${companyLabel} - ${nrLabel} ${invoiceNumberParam} ${clientLabel}`.trim();
     reply
       .header('Content-Type', 'application/pdf')
       .header('Content-Disposition', `inline; filename="${filename}.pdf"`);
