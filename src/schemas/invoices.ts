@@ -7,6 +7,7 @@ export const invoiceItemSchema = z.object({
 });
 
 export const createInvoiceBodySchema = z.object({
+  quoteId: z.string().optional().nullable(),
   clientName: z.string().optional().nullable(),
   customerAddress: z.string().optional().nullable(),
   additionalInfo: z.string().max(2000).optional().nullable(),

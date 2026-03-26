@@ -137,6 +137,7 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
     const invoice = await (prisma as any).invoice.create({
       data: {
         userId,
+        quoteId: data.quoteId ?? null,
         clientName: data.clientName ?? null,
         customerAddress: data.customerAddress ?? null,
         additionalInfo: data.additionalInfo ?? null,
@@ -292,9 +293,10 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
     if (!Number.isInteger(invoiceNumberParam) || invoiceNumberParam < 1) {
       return reply.status(400).send({ error: 'invoiceNumber is required and must be a positive integer' });
     }
-    const [invoice, user] = await Promise.all([
+    const [invoice, user, attachments] = await Promise.all([
       (prisma as any).invoice.findFirst({ where: { id, userId }, include: { items: true } }),
       prisma.user.findUnique({ where: { id: userId } }),
+      (prisma as any).invoiceAttachment.findMany({ where: { invoiceId: id }, orderBy: { createdAt: 'asc' } }),
     ]);
     if (!invoice) return reply.status(404).send({ error: 'Invoice not found' });
     if (!user) return reply.status(404).send({ error: 'User not found' });
