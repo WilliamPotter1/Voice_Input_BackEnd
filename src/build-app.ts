@@ -10,6 +10,7 @@ import { speechToTextRoutes } from './routes/speech-to-text.js';
 import { authRoutes } from './routes/auth.js';
 import { extractQuoteItemsRoutes } from './routes/extract-quote-items.js';
 import { quotesRoutes } from './routes/quotes.js';
+import { invoicesRoutes } from './routes/invoices.js';
 import { profileRoutes } from './routes/profile.js';
 import { authPlugin } from './plugins/auth.js';
 
@@ -63,7 +64,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(jwt, { secret });
   await app.register(authPlugin);
   await app.register(multipart, {
-    limits: { fileSize: 25 * 1024 * 1024 },
+    limits: { fileSize: 5 * 1024 * 1024 },
   });
 
   // ---- Global error handler ------------------------------------------------
@@ -102,6 +103,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(extractQuoteItemsRoutes, { prefix: '/api' });
   await app.register(profileRoutes, { prefix: '/api' });
   await app.register(quotesRoutes, { prefix: '/api' });
+  await app.register(invoicesRoutes, { prefix: '/api' });
 
   // ---- Serve uploaded files (before static frontend) -----------------------
   const uploadsDir = process.env.ATTACHMENTS_DIR ?? path.join(process.cwd(), 'uploads');

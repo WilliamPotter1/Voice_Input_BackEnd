@@ -31,8 +31,64 @@ model User {
   createdAt      DateTime @default(now()) @map("created_at")
 
   quotes Quote[]
+  invoices Invoice[]
 
   @@map("users")
+}
+
+model Invoice {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  quoteId        String?  @map("quote_id")
+  clientName     String?  @map("client_name")
+  customerAddress String? @map("customer_address")
+  additionalInfo String?  @map("additional_info")
+  currency       String   @default("EUR") @map("currency")
+  vatRate        Float    @default(0.19) @map("vat_rate")
+  subtotal       Float    @default(0)
+  vat            Float    @default(0)
+  total          Float    @default(0)
+  invoiceNumber  Int?     @map("invoice_number")
+  invoiceDate    DateTime? @map("invoice_date")
+  deliveryDate   DateTime? @map("delivery_date")
+  dueDate        DateTime? @map("due_date")
+  sentAt         DateTime? @map("sent_at")
+  sentByEmail    Boolean  @default(false) @map("sent_by_email")
+  sentByWhats    Boolean  @default(false) @map("sent_by_whatsapp")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items       InvoiceItem[]
+  attachments InvoiceAttachment[]
+
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id        String @id @default(uuid())
+  invoiceId String @map("invoice_id")
+  itemName  String @map("item_name")
+  quantity  Float  @default(1)
+  price     Float
+  total     Float
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_items")
+}
+
+model InvoiceAttachment {
+  id        String   @id @default(uuid())
+  invoiceId String   @map("invoice_id")
+  filename  String
+  mimeType  String   @map("mime_type")
+  size      Int
+  path      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_attachments")
 }
 
 model Quote {
