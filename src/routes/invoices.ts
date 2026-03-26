@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../lib/db.js';
 import { createInvoiceBodySchema, updateInvoiceBodySchema } from '../schemas/invoices.js';
+import { generateInvoicePdf } from '../services/generate-invoice-pdf.js';
 
 async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
   try {
@@ -191,6 +192,62 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
         total: it.total,
       })),
     };
+  });
+
+  app.get('/invoices/:id/pdf', async (request, reply) => {
+    const userId = request.userId!;
+    const { id } = request.params as { id: string };
+    const q = request.query as { invoiceDate?: string; dueDate?: string; lang?: string; invoiceNumber?: number };
+    const invoiceNumberParam = q.invoiceNumber != null ? Number(q.invoiceNumber) : NaN;
+    if (!Number.isInteger(invoiceNumberParam) || invoiceNumberParam < 1) {
+      return reply.status(400).send({ error: 'invoiceNumber is required and must be a positive integer' });
+    }
+    const [invoice, user] = await Promise.all([
+      (prisma as any).invoice.findFirst({ where: { id, userId }, include: { items: true } }),
+      prisma.user.findUnique({ where: { id: userId } }),
+    ]);
+    if (!invoice) return reply.status(404).send({ error: 'Invoice not found' });
+    if (!user) return reply.status(404).send({ error: 'User not found' });
+
+    const pdfDoc = generateInvoicePdf(
+      {
+        clientName: invoice.clientName ?? null,
+        customerAddress: invoice.customerAddress ?? null,
+        additionalInfo: invoice.additionalInfo ?? null,
+        currency: invoice.currency ?? 'EUR',
+        vatRate: invoice.vatRate,
+        subtotal: invoice.subtotal,
+        vat: invoice.vat,
+        total: invoice.total,
+        items: (invoice.items as any[]).map((it: any) => ({
+          itemName: it.itemName,
+          quantity: it.quantity,
+          price: it.price,
+          total: it.total,
+        })),
+      },
+      {
+        name: (user as any).name ?? null,
+        email: user.email,
+        phone: (user as any).phone ?? null,
+        companyName: (user as any).companyName ?? null,
+        companyAddress: (user as any).companyAddress ?? null,
+        companyCity: (user as any).companyCity ?? null,
+      },
+      {
+        invoiceDate: q.invoiceDate ?? new Date().toISOString().slice(0, 10),
+        dueDate: q.dueDate ?? '',
+        invoiceNumber: String(invoiceNumberParam),
+        lang: q.lang ?? 'de',
+      },
+    );
+    const companyLabel = ((user as any).companyName ?? 'Company').replace(/[^a-zA-Z0-9]/g, ' ').trim();
+    const clientLabel = (invoice.clientName ?? 'Invoice').replace(/[^a-zA-Z0-9]/g, ' ').trim();
+    const filename = `${companyLabel} - Invoice No. ${invoiceNumberParam} ${clientLabel}`.trim();
+    reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `inline; filename="${filename}.pdf"`);
+    return reply.send(pdfDoc);
   });
 
   app.patch('/invoices/:id', async (request, reply) => {
