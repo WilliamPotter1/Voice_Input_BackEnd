@@ -22,6 +22,36 @@ function startOfTodayIso(): string {
   return `${y}-${m}-${day}`;
 }
 
+function toInvoiceDetail(invoice: any) {
+  return {
+    id: invoice.id,
+    quoteId: invoice.quoteId ?? null,
+    clientName: invoice.clientName ?? null,
+    customerAddress: invoice.customerAddress ?? null,
+    additionalInfo: invoice.additionalInfo ?? null,
+    currency: invoice.currency ?? 'EUR',
+    vatRate: invoice.vatRate,
+    subtotal: invoice.subtotal,
+    vat: invoice.vat,
+    total: invoice.total,
+    invoiceNumber: invoice.invoiceNumber ?? null,
+    invoiceDate: invoice.invoiceDate ? invoice.invoiceDate.toISOString() : null,
+    deliveryDate: invoice.deliveryDate ? invoice.deliveryDate.toISOString() : null,
+    dueDate: invoice.dueDate ? invoice.dueDate.toISOString() : null,
+    sentAt: invoice.sentAt ? invoice.sentAt.toISOString() : null,
+    sentByEmail: invoice.sentByEmail ?? false,
+    sentByWhats: invoice.sentByWhats ?? false,
+    createdAt: invoice.createdAt.toISOString(),
+    items: (invoice.items as any[]).map((it: any) => ({
+      id: it.id,
+      itemName: it.itemName,
+      quantity: it.quantity,
+      unitPrice: it.price,
+      total: it.total,
+    })),
+  };
+}
+
 export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginOptions) {
   app.addHook('preHandler', requireAuth);
 
@@ -67,30 +97,7 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
       include: { items: true },
     });
 
-    return reply.status(201).send({
-      id: invoice.id,
-      quoteId: (invoice as any).quoteId ?? null,
-      clientName: invoice.clientName,
-      customerAddress: (invoice as any).customerAddress ?? null,
-      additionalInfo: (invoice as any).additionalInfo ?? null,
-      currency: (invoice as any).currency ?? 'EUR',
-      vatRate: invoice.vatRate,
-      subtotal: invoice.subtotal,
-      vat: invoice.vat,
-      total: invoice.total,
-      invoiceNumber: (invoice as any).invoiceNumber ?? null,
-      invoiceDate: (invoice as any).invoiceDate ? (invoice as any).invoiceDate.toISOString() : null,
-      deliveryDate: (invoice as any).deliveryDate ? (invoice as any).deliveryDate.toISOString() : null,
-      dueDate: (invoice as any).dueDate ? (invoice as any).dueDate.toISOString() : null,
-      createdAt: invoice.createdAt.toISOString(),
-      items: invoice.items.map((i: any) => ({
-        id: i.id,
-        itemName: i.itemName,
-        quantity: i.quantity,
-        unitPrice: i.price,
-        total: i.total,
-      })),
-    });
+    return reply.status(201).send(toInvoiceDetail(invoice));
   });
 
   app.post('/invoices', async (request, reply) => {
@@ -130,7 +137,7 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
       },
       include: { items: true },
     });
-    return reply.status(201).send(invoice);
+    return reply.status(201).send(toInvoiceDetail(invoice));
   });
 
   app.get('/invoices', async (request) => {
@@ -165,33 +172,7 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
     const { id } = request.params as { id: string };
     const invoice = await (prisma as any).invoice.findFirst({ where: { id, userId }, include: { items: true } });
     if (!invoice) return reply.status(404).send({ error: 'Invoice not found' });
-    return {
-      id: invoice.id,
-      quoteId: invoice.quoteId ?? null,
-      clientName: invoice.clientName ?? null,
-      customerAddress: invoice.customerAddress ?? null,
-      additionalInfo: invoice.additionalInfo ?? null,
-      currency: invoice.currency ?? 'EUR',
-      vatRate: invoice.vatRate,
-      subtotal: invoice.subtotal,
-      vat: invoice.vat,
-      total: invoice.total,
-      invoiceNumber: invoice.invoiceNumber ?? null,
-      invoiceDate: invoice.invoiceDate ? invoice.invoiceDate.toISOString() : null,
-      deliveryDate: invoice.deliveryDate ? invoice.deliveryDate.toISOString() : null,
-      dueDate: invoice.dueDate ? invoice.dueDate.toISOString() : null,
-      sentAt: invoice.sentAt ? invoice.sentAt.toISOString() : null,
-      sentByEmail: invoice.sentByEmail ?? false,
-      sentByWhats: invoice.sentByWhats ?? false,
-      createdAt: invoice.createdAt.toISOString(),
-      items: (invoice.items as any[]).map((it: any) => ({
-        id: it.id,
-        itemName: it.itemName,
-        quantity: it.quantity,
-        unitPrice: it.price,
-        total: it.total,
-      })),
-    };
+    return toInvoiceDetail(invoice);
   });
 
   app.get('/invoices/:id/pdf', async (request, reply) => {
@@ -296,7 +277,7 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
       },
       include: { items: true },
     });
-    return updated;
+    return toInvoiceDetail(updated);
   });
 
   app.delete('/invoices/:id', async (request, reply) => {
