@@ -230,9 +230,8 @@ const pdfStrings: Record<string, PdfStrings> = {
 function getStrings(lang: string, docType: 'quote' | 'invoice' = 'quote'): PdfStrings {
   const base = pdfStrings[lang] ?? pdfStrings.en;
   if (docType !== 'invoice') return base;
-  if (lang === 'de') {
-    return {
-      ...base,
+  const invoiceByLang: Record<string, Partial<PdfStrings>> = {
+    de: {
       title: 'Rechnung',
       quoteNr: 'Rechnungs-Nr.',
       intro: 'vielen Dank für Ihren Auftrag, den wir wie folgt vereinbarungsgemäß in Rechnung stellen:',
@@ -241,12 +240,54 @@ function getStrings(lang: string, docType: 'quote' | 'invoice' = 'quote'): PdfSt
       closingContact: () => '',
       closingValid: (d) => `Diese Rechnung ist gültig bis zum ${d}.`,
       attachmentsLabel: 'Es liegen Anhänge zu dieser Rechnung vor.',
-    };
-  }
+    },
+    en: {
+      title: 'Invoice',
+      quoteNr: 'Invoice No.',
+      intro: 'Thank you for your order. We hereby invoice the agreed services as follows:',
+      introOffer: '',
+      closingInterest: 'Please transfer the total amount by the due date to the specified account.',
+      closingContact: () => '',
+      closingValid: (d) => `This invoice is valid until ${d}.`,
+      attachmentsLabel: 'There are attachments for this invoice.',
+    },
+    it: {
+      title: 'Fattura',
+      quoteNr: 'Fattura n.',
+      intro: 'La ringraziamo per il Suo ordine, che fatturiamo come concordato di seguito:',
+      introOffer: '',
+      closingInterest: 'La preghiamo di versare l’importo totale entro la data di scadenza sul conto indicato.',
+      closingContact: () => '',
+      closingValid: (d) => `Questa fattura è valida fino al ${d}.`,
+      attachmentsLabel: 'Ci sono allegati per questa fattura.',
+    },
+    fr: {
+      title: 'Facture',
+      quoteNr: 'Facture n°',
+      intro: 'Merci pour votre commande, que nous facturons conformément à l’accord comme suit :',
+      introOffer: '',
+      closingInterest: 'Veuillez virer le montant total avant la date d’échéance sur le compte indiqué.',
+      closingContact: () => '',
+      closingValid: (d) => `Cette facture est valable jusqu’au ${d}.`,
+      attachmentsLabel: 'Cette facture comporte des pièces jointes.',
+    },
+    es: {
+      title: 'Factura',
+      quoteNr: 'Factura n.°',
+      intro: 'Muchas gracias por su pedido, que facturamos según lo acordado de la siguiente manera:',
+      introOffer: '',
+      closingInterest: 'Por favor, transfiera el importe total antes de la fecha de vencimiento a la cuenta indicada.',
+      closingContact: () => '',
+      closingValid: (d) => `Esta factura es válida hasta el ${d}.`,
+      attachmentsLabel: 'Hay archivos adjuntos para esta factura.',
+    },
+  };
+  const override = invoiceByLang[lang] ?? invoiceByLang.en;
   return {
     ...base,
-    title: 'Invoice',
-    quoteNr: 'Invoice No.',
+    ...override,
+    closingContact: override.closingContact ?? base.closingContact,
+    closingValid: override.closingValid ?? base.closingValid,
   };
 }
 
