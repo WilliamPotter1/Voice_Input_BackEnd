@@ -199,9 +199,10 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
     if (!Number.isInteger(invoiceNumberParam) || invoiceNumberParam < 1) {
       return reply.status(400).send({ error: 'invoiceNumber is required and must be a positive integer' });
     }
-    const [invoice, user] = await Promise.all([
+    const [invoice, user, attachments] = await Promise.all([
       (prisma as any).invoice.findFirst({ where: { id, userId }, include: { items: true } }),
       prisma.user.findUnique({ where: { id: userId } }),
+      (prisma as any).invoiceAttachment.findMany({ where: { invoiceId: id }, orderBy: { createdAt: 'asc' } }),
     ]);
     if (!invoice) return reply.status(404).send({ error: 'Invoice not found' });
     if (!user) return reply.status(404).send({ error: 'User not found' });
@@ -223,7 +224,7 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
           price: it.price,
           total: it.total,
         })),
-        attachments: [],
+        attachments: (attachments as any[]).map((a: any) => ({ filename: a.filename, url: '' })),
       },
       {
         name: (user as any).name ?? null,
@@ -410,13 +411,18 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
         senderName,
       ].filter(Boolean).join('\n\n');
 
+      const fileAttachments = (attachments as any[]).map((a: any) => ({
+        filename: a.filename,
+        path: path.join(ATTACHMENTS_DIR, a.path),
+      }));
+
       await sendQuoteEmail({
         to: recipient,
         cc: user.email,
         subject: `${companyLabel} - ${subjectTitle} ${clientLabel}`.trim(),
         text,
         pdf: { filename: `${pdfFilenameBase}.pdf`, content: pdfBuffer },
-        attachments: [],
+        attachments: fileAttachments,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to send invoice';
@@ -433,9 +439,10 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
     if (!Number.isInteger(invoiceNumberParam) || invoiceNumberParam < 1) {
       return reply.status(400).send({ error: 'invoiceNumber must be a positive integer' });
     }
-    const [invoice, user] = await Promise.all([
+    const [invoice, user, attachments] = await Promise.all([
       (prisma as any).invoice.findFirst({ where: { id, userId }, include: { items: true } }),
       prisma.user.findUnique({ where: { id: userId } }),
+      (prisma as any).invoiceAttachment.findMany({ where: { invoiceId: id }, orderBy: { createdAt: 'asc' } }),
     ]);
     if (!invoice) return reply.status(404).send({ error: 'Invoice not found' });
     if (!user) return reply.status(404).send({ error: 'User not found' });
@@ -462,7 +469,7 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
           price: it.price,
           total: it.total,
         })),
-        attachments: [],
+        attachments: (attachments as any[]).map((a: any) => ({ filename: a.filename, url: '' })),
       },
       {
         name: (user as any).name ?? null,
@@ -503,7 +510,12 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
 
     const uploadsBase = `${baseUrl}/uploads`;
     const pdfUrl = `${uploadsBase}/invoices/${id}/pdf-${encodeURIComponent(pdfNumber)}.pdf`;
-    return reply.send({ pdfUrl, attachmentUrls: [] as { filename: string; url: string }[] });
+    const attachmentUrls = (attachments as any[]).map((a: any) => {
+      const rawPath = String(a.path ?? '').replace(/^[/\\]+/, '');
+      const encodedPath = encodeURI(rawPath);
+      return { filename: a.filename, url: `${uploadsBase}/${encodedPath}` };
+    });
+    return reply.send({ pdfUrl, attachmentUrls });
   });
 
   app.patch('/invoices/:id', async (request, reply) => {
