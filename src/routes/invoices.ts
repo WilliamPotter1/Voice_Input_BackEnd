@@ -1,7 +1,11 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyRequest, FastifyReply } from 'fastify';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
 import { prisma } from '../lib/db.js';
 import { createInvoiceBodySchema, updateInvoiceBodySchema } from '../schemas/invoices.js';
 import { generateQuotePdf } from '../services/generate-quote-pdf.js';
+import { sendQuoteEmail } from '../services/send-quote.js';
 
 async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
   try {
@@ -53,7 +57,18 @@ function toInvoiceDetail(invoice: any) {
 }
 
 export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginOptions) {
+  const ATTACHMENTS_DIR = process.env.ATTACHMENTS_DIR ?? path.join(process.cwd(), 'uploads');
   app.addHook('preHandler', requireAuth);
+  function normalizeLang(input: unknown): 'de' | 'en' | 'it' | 'fr' | 'es' {
+    const s = String(input ?? '').toLowerCase();
+    if (s === 'de' || s === 'en' || s === 'it' || s === 'fr' || s === 'es') return s;
+    return 'de';
+  }
+  function formatDateForLang(lang: 'de' | 'en' | 'it' | 'fr' | 'es', dateStr: string): string {
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return dateStr;
+    return new Intl.DateTimeFormat(lang, { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
+  }
 
   app.post('/invoices/from-quote/:quoteId', async (request, reply) => {
     const userId = request.userId!;
@@ -257,6 +272,237 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
       .header('Content-Type', 'application/pdf')
       .header('Content-Disposition', `inline; filename="${filename}.pdf"`);
     return reply.send(pdfDoc);
+  });
+
+  app.post('/invoices/:id/send', async (request, reply) => {
+    const userId = request.userId!;
+    const { id } = request.params as { id: string };
+    const body = request.body as {
+      channel: 'email' | 'whatsapp';
+      recipient: string;
+      invoiceDate: string;
+      dueDate: string;
+      invoiceNumber?: number;
+      lang?: string;
+    };
+    const { channel, recipient, invoiceDate, dueDate } = body;
+    const invoiceNumberParam = body.invoiceNumber != null ? Number(body.invoiceNumber) : NaN;
+    if (!Number.isInteger(invoiceNumberParam) || invoiceNumberParam < 1) {
+      return reply.status(400).send({ error: 'invoiceNumber is required and must be a positive integer' });
+    }
+    const [invoice, user] = await Promise.all([
+      (prisma as any).invoice.findFirst({ where: { id, userId }, include: { items: true } }),
+      prisma.user.findUnique({ where: { id: userId } }),
+    ]);
+    if (!invoice) return reply.status(404).send({ error: 'Invoice not found' });
+    if (!user) return reply.status(404).send({ error: 'User not found' });
+    const lang = normalizeLang(body.lang);
+    const invoiceNumber = String(invoiceNumberParam);
+
+    const pdfDoc = generateQuotePdf(
+      {
+        id: invoice.id,
+        clientName: invoice.clientName ?? null,
+        customerAddress: invoice.customerAddress ?? null,
+        freeText: invoice.additionalInfo ?? null,
+        currency: invoice.currency ?? 'EUR',
+        vatRate: invoice.vatRate,
+        subtotal: invoice.subtotal,
+        vat: invoice.vat,
+        total: invoice.total,
+        items: (invoice.items as any[]).map((it: any) => ({
+          itemName: it.itemName,
+          quantity: it.quantity,
+          price: it.price,
+          total: it.total,
+        })),
+        attachments: [],
+      },
+      {
+        name: (user as any).name ?? null,
+        phone: (user as any).phone ?? null,
+        email: user.email,
+        companyName: (user as any).companyName ?? null,
+        companyAddress: (user as any).companyAddress ?? null,
+        companyCity: (user as any).companyCity ?? null,
+        websiteUrl: (user as any).websiteUrl ?? null,
+        bankName: (user as any).bankName ?? null,
+        blz: (user as any).blz ?? null,
+        kto: (user as any).kto ?? null,
+        iban: (user as any).iban ?? null,
+        bic: (user as any).bic ?? null,
+        taxNumber: (user as any).taxNumber ?? null,
+        taxOfficeName: (user as any).taxOfficeName ?? null,
+      },
+      {
+        quoteDate: invoiceDate,
+        validUntil: dueDate,
+        quoteNumber: invoiceNumber,
+        lang,
+        deliveryDate: invoice.deliveryDate ? invoice.deliveryDate.toISOString() : '',
+        docType: 'invoice',
+      },
+    );
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      pdfDoc.on('data', (c) => chunks.push(c as Buffer));
+      pdfDoc.on('end', () => resolve());
+      pdfDoc.on('error', reject);
+    });
+    const pdfBuffer = Buffer.concat(chunks);
+
+    if (channel === 'whatsapp') {
+      return reply.send({ ok: true });
+    }
+
+    try {
+      const companyLabel = ((user as any).companyName ?? 'Firma').trim();
+      const clientLabel = (invoice.clientName ?? '').trim();
+      const invoiceNrLabelByLang: Record<'de' | 'en' | 'it' | 'fr' | 'es', string> = {
+        de: 'Rechnungs-Nr.:',
+        en: 'Invoice No.:',
+        it: 'Fattura n.:',
+        fr: 'Facture n°:',
+        es: 'Factura n.º:',
+      };
+      const subjectTitle = `${invoiceNrLabelByLang[lang]} ${invoiceNumber}`;
+      const pdfFilenameBase = `${companyLabel} - ${subjectTitle} ${clientLabel}`.trim();
+      const dueDateStr = dueDate ? formatDateForLang(lang, dueDate) : '';
+      const senderName = ((user as any).name ?? '').trim() || companyLabel;
+      const bodyByLang: Record<'de' | 'en' | 'it' | 'fr' | 'es', { intro: string; payment: string; closing: (d: string) => string; regards: string }> = {
+        de: {
+          intro: 'vielen Dank für Ihren Auftrag, den wir wie folgt vereinbarungsgemäß in Rechnung stellen:',
+          payment: 'Bitte überweisen Sie den Gesamtbetrag bis zum Fälligkeitsdatum auf das angegebene Konto.',
+          closing: (d) => `Diese Rechnung ist gültig bis zum ${d}.`,
+          regards: 'Mit freundlichen Grüßen',
+        },
+        en: {
+          intro: 'Thank you for your order. We hereby invoice the agreed services as follows:',
+          payment: 'Please transfer the total amount by the due date to the specified account.',
+          closing: (d) => `This invoice is valid until ${d}.`,
+          regards: 'Kind regards',
+        },
+        it: {
+          intro: 'La ringraziamo per il Suo ordine, che fatturiamo come concordato di seguito:',
+          payment: 'La preghiamo di versare l’importo totale entro la data di scadenza sul conto indicato.',
+          closing: (d) => `Questa fattura è valida fino al ${d}.`,
+          regards: 'Cordiali saluti',
+        },
+        fr: {
+          intro: 'Merci pour votre commande, que nous facturons conformément à l’accord comme suit :',
+          payment: 'Veuillez virer le montant total avant la date d’échéance sur le compte indiqué.',
+          closing: (d) => `Cette facture est valable jusqu’au ${d}.`,
+          regards: 'Cordialement',
+        },
+        es: {
+          intro: 'Muchas gracias por su pedido, que facturamos según lo acordado de la siguiente manera:',
+          payment: 'Por favor, transfiera el importe total antes de la fecha de vencimiento a la cuenta indicada.',
+          closing: (d) => `Esta factura es válida hasta el ${d}.`,
+          regards: 'Atentamente',
+        },
+      };
+      const text = [
+        bodyByLang[lang].intro,
+        bodyByLang[lang].payment,
+        dueDateStr ? bodyByLang[lang].closing(dueDateStr) : '',
+        bodyByLang[lang].regards,
+        senderName,
+      ].filter(Boolean).join('\n\n');
+
+      await sendQuoteEmail({
+        to: recipient,
+        cc: user.email,
+        subject: `${companyLabel} - ${subjectTitle} ${clientLabel}`.trim(),
+        text,
+        pdf: { filename: `${pdfFilenameBase}.pdf`, content: pdfBuffer },
+        attachments: [],
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to send invoice';
+      return reply.status(400).send({ error: msg });
+    }
+    return reply.send({ ok: true });
+  });
+
+  app.post('/invoices/:id/send-links', async (request, reply) => {
+    const userId = request.userId!;
+    const { id } = request.params as { id: string };
+    const q = request.body as { invoiceDate: string; dueDate: string; invoiceNumber: number; lang?: string };
+    const invoiceNumberParam = Number(q.invoiceNumber);
+    if (!Number.isInteger(invoiceNumberParam) || invoiceNumberParam < 1) {
+      return reply.status(400).send({ error: 'invoiceNumber must be a positive integer' });
+    }
+    const [invoice, user] = await Promise.all([
+      (prisma as any).invoice.findFirst({ where: { id, userId }, include: { items: true } }),
+      prisma.user.findUnique({ where: { id: userId } }),
+    ]);
+    if (!invoice) return reply.status(404).send({ error: 'Invoice not found' });
+    if (!user) return reply.status(404).send({ error: 'User not found' });
+
+    const baseUrl = process.env.PUBLIC_URL
+      ? process.env.PUBLIC_URL.replace(/\/+$/, '')
+      : `https://${request.hostname}`;
+    const pdfNumber = String(invoiceNumberParam);
+
+    const pdfDoc = generateQuotePdf(
+      {
+        id: invoice.id,
+        clientName: invoice.clientName ?? null,
+        customerAddress: invoice.customerAddress ?? null,
+        freeText: invoice.additionalInfo ?? null,
+        currency: invoice.currency ?? 'EUR',
+        vatRate: invoice.vatRate,
+        subtotal: invoice.subtotal,
+        vat: invoice.vat,
+        total: invoice.total,
+        items: (invoice.items as any[]).map((it: any) => ({
+          itemName: it.itemName,
+          quantity: it.quantity,
+          price: it.price,
+          total: it.total,
+        })),
+        attachments: [],
+      },
+      {
+        name: (user as any).name ?? null,
+        phone: (user as any).phone ?? null,
+        email: user.email,
+        companyName: (user as any).companyName ?? null,
+        companyAddress: (user as any).companyAddress ?? null,
+        companyCity: (user as any).companyCity ?? null,
+        websiteUrl: (user as any).websiteUrl ?? null,
+        bankName: (user as any).bankName ?? null,
+        blz: (user as any).blz ?? null,
+        kto: (user as any).kto ?? null,
+        iban: (user as any).iban ?? null,
+        bic: (user as any).bic ?? null,
+        taxNumber: (user as any).taxNumber ?? null,
+        taxOfficeName: (user as any).taxOfficeName ?? null,
+      },
+      {
+        quoteDate: q.invoiceDate,
+        validUntil: q.dueDate,
+        quoteNumber: pdfNumber,
+        lang: q.lang ?? 'de',
+        deliveryDate: invoice.deliveryDate ? invoice.deliveryDate.toISOString() : '',
+        docType: 'invoice',
+      },
+    );
+
+    const pdfDir = path.join(ATTACHMENTS_DIR, 'invoices', id);
+    await fsp.mkdir(pdfDir, { recursive: true });
+    const pdfPath = path.join(pdfDir, `pdf-${pdfNumber}.pdf`);
+    await new Promise<void>((resolve, reject) => {
+      const out = fs.createWriteStream(pdfPath);
+      pdfDoc.pipe(out);
+      out.on('finish', resolve);
+      out.on('error', reject);
+      pdfDoc.on('error', reject);
+    });
+
+    const uploadsBase = `${baseUrl}/uploads`;
+    const pdfUrl = `${uploadsBase}/invoices/${id}/pdf-${encodeURIComponent(pdfNumber)}.pdf`;
+    return reply.send({ pdfUrl, attachmentUrls: [] as { filename: string; url: string }[] });
   });
 
   app.patch('/invoices/:id', async (request, reply) => {
