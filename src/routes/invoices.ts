@@ -373,45 +373,74 @@ export async function invoicesRoutes(app: FastifyInstance, _opts: FastifyPluginO
       const pdfFilenameBase = `${companyLabel} - ${subjectTitle} ${clientLabel}`.trim();
       const dueDateStr = dueDate ? formatDateForLang(lang, dueDate) : '';
       const senderName = ((user as any).name ?? '').trim() || companyLabel;
-      const bodyByLang: Record<'de' | 'en' | 'it' | 'fr' | 'es', { intro: string; payment: string; closing: (d: string) => string; regards: string }> = {
+      const customerName =
+        clientLabel ||
+        (lang === 'de'
+          ? 'Kunde'
+          : lang === 'en'
+            ? 'Customer'
+            : lang === 'it'
+              ? 'Cliente'
+              : lang === 'fr'
+                ? 'Client'
+                : 'Cliente');
+      const bodyByLang: Record<
+        'de' | 'en' | 'it' | 'fr' | 'es',
+        {
+          greeting: (customer: string) => string;
+          intro: string;
+          payment: string;
+          closing: (d: string) => string;
+          regards: string;
+        }
+      > = {
         de: {
+          greeting: (c) => `Sehr geehrte(r) ${c},`,
           intro: 'vielen Dank für Ihren Auftrag, den wir wie folgt vereinbarungsgemäß in Rechnung stellen:',
           payment: 'Bitte überweisen Sie den Gesamtbetrag bis zum Fälligkeitsdatum auf das angegebene Konto.',
           closing: (d) => `Diese Rechnung ist gültig bis zum ${d}.`,
           regards: 'Mit freundlichen Grüßen',
         },
         en: {
+          greeting: (c) => `Dear ${c},`,
           intro: 'Thank you for your order. We hereby invoice the agreed services as follows:',
           payment: 'Please transfer the total amount by the due date to the specified account.',
           closing: (d) => `This invoice is valid until ${d}.`,
           regards: 'Kind regards',
         },
         it: {
+          greeting: (c) => `Gentile ${c},`,
           intro: 'La ringraziamo per il Suo ordine, che fatturiamo come concordato di seguito:',
           payment: 'La preghiamo di versare l’importo totale entro la data di scadenza sul conto indicato.',
           closing: (d) => `Questa fattura è valida fino al ${d}.`,
           regards: 'Cordiali saluti',
         },
         fr: {
+          greeting: (c) => `Bonjour ${c},`,
           intro: 'Merci pour votre commande, que nous facturons conformément à l’accord comme suit :',
           payment: 'Veuillez virer le montant total avant la date d’échéance sur le compte indiqué.',
           closing: (d) => `Cette facture est valable jusqu’au ${d}.`,
           regards: 'Cordialement',
         },
         es: {
+          greeting: (c) => `Estimado/a ${c},`,
           intro: 'Muchas gracias por su pedido, que facturamos según lo acordado de la siguiente manera:',
           payment: 'Por favor, transfiera el importe total antes de la fecha de vencimiento a la cuenta indicada.',
           closing: (d) => `Esta factura es válida hasta el ${d}.`,
           regards: 'Atentamente',
         },
       };
+      const b = bodyByLang[lang];
       const text = [
-        bodyByLang[lang].intro,
-        bodyByLang[lang].payment,
-        dueDateStr ? bodyByLang[lang].closing(dueDateStr) : '',
-        bodyByLang[lang].regards,
+        b.greeting(customerName),
+        b.intro,
+        b.payment,
+        dueDateStr ? b.closing(dueDateStr) : '',
+        b.regards,
         senderName,
-      ].filter(Boolean).join('\n\n');
+      ]
+        .filter(Boolean)
+        .join('\n\n');
 
       const fileAttachments = (attachments as any[]).map((a: any) => ({
         filename: a.filename,

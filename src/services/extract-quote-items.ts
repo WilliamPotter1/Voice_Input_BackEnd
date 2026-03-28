@@ -2,6 +2,24 @@ import { OpenAI } from 'openai';
 import type { QuoteItemInput } from '../schemas/quotes.js';
 
 let _openai: OpenAI;
+
+/** Remove comma-separated literal "null"/"undefined" tokens that models sometimes emit for missing address parts. */
+function normalizeExtractedCustomerAddress(addr: string | null): string | null {
+  if (addr == null) return null;
+  const segments = addr
+    .split(',')
+    .map((p) => p.trim())
+    .filter(
+      (p) =>
+        p.length > 0 &&
+        !/^null$/i.test(p) &&
+        p.toLowerCase() !== 'undefined' &&
+        !/^n\/?a$/i.test(p),
+    );
+  const s = segments.join(', ').trim();
+  return s || null;
+}
+
 function getOpenAI() {
   if (!_openai) {
     _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? '' });
@@ -37,6 +55,7 @@ Rules:
   4) Street/house number
   For example: "10115 Berlin, Invalidenstraße 116".
 - If you only know some parts, still keep the same order and omit the missing pieces, e.g. "10115 Berlin" or "10115 Berlin, Invalidenstraße".
+- Never put the literal English words "null" or "undefined" inside "customerAddress"; if a part is unknown, leave it out (do not pad with placeholders).
  - "vatRate" must be a number between 0 and 1 representing the tax/VAT fraction (e.g. 0.19 for 19%, 0.07 for 7%). If no tax/VAT is clearly specified, use null.
  - "currency" must be a 3-letter ISO 4217 currency code (e.g. "EUR", "CHF", "USD") that matches the main currency implied in the text. If you cannot confidently determine the currency, use "EUR" by default.
  - Each element must have: "itemName" (string), "quantity" (number, can be fractional like 0.5), "unitPrice" (number, in the main currency unit, e.g. euros), and "unit" (string).
@@ -92,10 +111,9 @@ export async function extractQuoteItems(
         : null;
 
     const customerAddressRaw = Array.isArray(root) ? undefined : root.customerAddress;
-    const customerAddress =
-      typeof customerAddressRaw === 'string'
-        ? customerAddressRaw.trim() || null
-        : null;
+    const customerAddress = normalizeExtractedCustomerAddress(
+      typeof customerAddressRaw === 'string' ? customerAddressRaw.trim() || null : null,
+    );
 
     const vatRateRaw = Array.isArray(root) ? undefined : root.vatRate;
     const vatRateNum = typeof vatRateRaw === 'number' ? vatRateRaw : Number(vatRateRaw);

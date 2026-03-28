@@ -236,9 +236,7 @@ function getStrings(lang: string, docType: 'quote' | 'invoice' = 'quote'): PdfSt
       quoteNr: 'Rechnungs-Nr.',
       intro: 'vielen Dank für Ihren Auftrag, den wir wie folgt vereinbarungsgemäß in Rechnung stellen:',
       introOffer: '',
-      closingInterest: 'Bitte überweisen Sie den Gesamtbetrag bis zum Fälligkeitsdatum auf das angegebene Konto.',
       closingContact: () => '',
-      closingValid: (d) => `Diese Rechnung ist gültig bis zum ${d}.`,
       attachmentsLabel: 'Es liegen Anhänge zu dieser Rechnung vor.',
     },
     en: {
@@ -246,9 +244,7 @@ function getStrings(lang: string, docType: 'quote' | 'invoice' = 'quote'): PdfSt
       quoteNr: 'Invoice No.',
       intro: 'Thank you for your order. We hereby invoice the agreed services as follows:',
       introOffer: '',
-      closingInterest: 'Please transfer the total amount by the due date to the specified account.',
       closingContact: () => '',
-      closingValid: (d) => `This invoice is valid until ${d}.`,
       attachmentsLabel: 'There are attachments for this invoice.',
     },
     it: {
@@ -256,9 +252,7 @@ function getStrings(lang: string, docType: 'quote' | 'invoice' = 'quote'): PdfSt
       quoteNr: 'Fattura n.',
       intro: 'La ringraziamo per il Suo ordine, che fatturiamo come concordato di seguito:',
       introOffer: '',
-      closingInterest: 'La preghiamo di versare l’importo totale entro la data di scadenza sul conto indicato.',
       closingContact: () => '',
-      closingValid: (d) => `Questa fattura è valida fino al ${d}.`,
       attachmentsLabel: 'Ci sono allegati per questa fattura.',
     },
     fr: {
@@ -266,9 +260,7 @@ function getStrings(lang: string, docType: 'quote' | 'invoice' = 'quote'): PdfSt
       quoteNr: 'Facture n°',
       intro: 'Merci pour votre commande, que nous facturons conformément à l’accord comme suit :',
       introOffer: '',
-      closingInterest: 'Veuillez virer le montant total avant la date d’échéance sur le compte indiqué.',
       closingContact: () => '',
-      closingValid: (d) => `Cette facture est valable jusqu’au ${d}.`,
       attachmentsLabel: 'Cette facture comporte des pièces jointes.',
     },
     es: {
@@ -276,9 +268,7 @@ function getStrings(lang: string, docType: 'quote' | 'invoice' = 'quote'): PdfSt
       quoteNr: 'Factura n.°',
       intro: 'Muchas gracias por su pedido, que facturamos según lo acordado de la siguiente manera:',
       introOffer: '',
-      closingInterest: 'Por favor, transfiera el importe total antes de la fecha de vencimiento a la cuenta indicada.',
       closingContact: () => '',
-      closingValid: (d) => `Esta factura es válida hasta el ${d}.`,
       attachmentsLabel: 'Hay archivos adjuntos para esta factura.',
     },
   };
@@ -289,6 +279,29 @@ function getStrings(lang: string, docType: 'quote' | 'invoice' = 'quote'): PdfSt
     closingContact: override.closingContact ?? base.closingContact,
     closingValid: override.closingValid ?? base.closingValid,
   };
+}
+
+/** Invoice payment line: use formatted due date (not the word “Fälligkeitsdatum” / “due date”). */
+function invoicePaymentClosingParagraph(lang: string, dueFormatted: string | null): string {
+  const l = ['de', 'en', 'it', 'fr', 'es'].includes(lang) ? lang : 'en';
+  if (dueFormatted) {
+    const withDate: Record<string, string> = {
+      de: `Bitte überweisen Sie den Gesamtbetrag bis zum ${dueFormatted} auf das angegebene Konto.`,
+      en: `Please transfer the total amount by ${dueFormatted} to the specified account.`,
+      it: `La preghiamo di versare l’importo totale entro il ${dueFormatted} sul conto indicato.`,
+      fr: `Veuillez virer le montant total au plus tard le ${dueFormatted} sur le compte indiqué.`,
+      es: `Por favor, transfiera el importe total antes del ${dueFormatted} a la cuenta indicada.`,
+    };
+    return withDate[l] ?? withDate.en;
+  }
+  const noDate: Record<string, string> = {
+    de: 'Bitte überweisen Sie den Gesamtbetrag auf das angegebene Konto.',
+    en: 'Please transfer the total amount to the specified account.',
+    it: 'La preghiamo di versare l’importo totale sul conto indicato.',
+    fr: 'Veuillez virer le montant total sur le compte indiqué.',
+    es: 'Por favor, transfiera el importe total a la cuenta indicada.',
+  };
+  return noDate[l] ?? noDate.en;
 }
 
 // ---------------------------------------------------------------------------
@@ -590,14 +603,19 @@ export function generateQuotePdf(
   // =====================================================================
   cy = doc.y + gapSec + 6;
   doc.font(R).fontSize(bodyFs).fillColor('#000000');
-  doc.text(s.closingInterest, ML, cy, { width: CONTENT_W, lineGap: 2 });
+  const dueFormatted = options.validUntil ? formatDateDmy(options.validUntil) : null;
+  const closingPaymentText =
+    options.docType === 'invoice'
+      ? invoicePaymentClosingParagraph(options.lang, dueFormatted)
+      : s.closingInterest;
+  doc.text(closingPaymentText, ML, cy, { width: CONTENT_W, lineGap: 2 });
   cy = doc.y + gapLine;
   const closingContactText = s.closingContact(user.phone ?? '').trim();
   if (closingContactText.length > 0) {
     doc.text(closingContactText, ML, cy, { width: CONTENT_W, lineGap: 2 });
   }
-  // Only show "valid until" sentence if a valid-until date was provided
-  if (options.validUntil) {
+  // Quotes: "valid until" line. Invoices: omit (due date is already in the payment line above).
+  if (options.validUntil && options.docType !== 'invoice') {
     cy = doc.y + Math.max(gapLine - 2, 2);
     doc.text(s.closingValid(formatDateDmy(options.validUntil)), ML, cy, { width: CONTENT_W, lineGap: 2 });
   }
@@ -615,7 +633,10 @@ export function generateQuotePdf(
   // =====================================================================
   //  SIGNATURE
   // =====================================================================
-  cy = doc.y + gapSec;
+  // Invoices: push signature block down by ~3–4 body lines vs quotes.
+  const invoiceSignatureExtraY =
+    options.docType === 'invoice' ? Math.round((bodyFs + gapLine) * 3.5) : 0;
+  cy = doc.y + gapSec + invoiceSignatureExtraY;
   doc.font(R).fontSize(bodyFs);
   doc.text(s.regards, ML, cy);
   cy = doc.y + gapSec * 2 + 4;
